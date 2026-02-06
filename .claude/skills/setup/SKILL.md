@@ -329,6 +329,263 @@ Tell them:
 
 ---
 
+## Advanced Configuration
+
+The following sections are optional but recommended for production use.
+
+---
+
+## 9. Configure Assistant Name (Optional)
+
+**For WhatsApp users who want a custom trigger word.**
+
+Ask the user:
+> What trigger word do you want to use? (default: `@Jimmy`)
+>
+> Messages starting with `@TriggerWord` will be sent to Claude.
+
+If they choose something other than `@Jimmy`, update it in these places:
+1. `channels.yaml` - Change `assistant.name` and `whatsapp.trigger`
+2. `groups/main/CLAUDE.md` - Change "# Jimmy" and "You are Jimmy" to the new name
+3. `data/registered_groups.json` - Use `@NewName` as the trigger
+
+---
+
+## 10. Understand the Security Model (WhatsApp)
+
+**Skip if using PWA only.**
+
+Before adding more WhatsApp groups, understand the security model.
+
+**Use AskUserQuestion** to present this:
+
+> **Important: Your "main" channel is your admin control portal.**
+>
+> The main channel has elevated privileges:
+> - Can see messages from ALL other registered groups
+> - Can manage and delete tasks across all groups
+> - Can write to global memory that all groups can read
+> - Has read-write access to the entire NanoClaw project
+>
+> **Recommendation:** Use your personal "Message Yourself" chat or a solo WhatsApp group as your main channel. This ensures only you have admin control.
+>
+> **Question:** Which setup will you use for your main channel?
+>
+> Options:
+> 1. Personal chat (Message Yourself) - Recommended
+> 2. Solo WhatsApp group (just me)
+> 3. Group with other people (I understand the security implications)
+
+If they choose option 3, ask a follow-up:
+
+> You've chosen a group with other people. This means everyone in that group will have admin privileges over NanoClaw.
+>
+> Are you sure you want to proceed? The other members will be able to:
+> - Read messages from your other registered chats
+> - Schedule and manage tasks
+> - Access any directories you've mounted
+>
+> Options:
+> 1. Yes, I understand and want to proceed
+> 2. No, let me use a personal chat or solo group instead
+
+---
+
+## 11. Configure External Directory Access (Mount Allowlist)
+
+**Optional but important for security.**
+
+Ask the user:
+> Do you want the agent to be able to access any directories **outside** the NanoClaw project?
+>
+> Examples: Git repositories, project folders, documents you want Claude to work on.
+>
+> **Note:** This is optional. Without configuration, agents can only access their own group folders.
+
+### If no:
+
+Create an empty allowlist to make this explicit:
+
+```bash
+mkdir -p ~/.config/nanoclaw
+cat > ~/.config/nanoclaw/mount-allowlist.json << 'EOF'
+{
+  "allowedRoots": [],
+  "blockedPatterns": [],
+  "nonMainReadOnly": true
+}
+EOF
+echo "✓ Mount allowlist created - no external directories allowed"
+```
+
+Skip to the next step.
+
+### If yes:
+
+#### 11a. Collect Directory Paths
+
+Ask the user:
+> Which directories do you want to allow access to?
+>
+> You can specify:
+> - A parent folder like `~/projects` (allows access to anything inside)
+> - Specific paths like `~/repos/my-app`
+>
+> List them one per line, or give me a comma-separated list.
+
+For each directory they provide, ask:
+> Should `[directory]` be **read-write** (agents can modify files) or **read-only**?
+>
+> Read-write is needed for: code changes, creating files, git commits
+> Read-only is safer for: reference docs, config examples, templates
+
+#### 11b. Configure Non-Main Group Access
+
+Ask the user:
+> Should **non-main groups** (other WhatsApp chats you add later) be restricted to **read-only** access even if read-write is allowed for the directory?
+>
+> Recommended: **Yes** - this prevents other groups from modifying files even if you grant them access to a directory.
+
+#### 11c. Create the Allowlist
+
+Create the allowlist file based on their answers:
+
+```bash
+mkdir -p ~/.config/nanoclaw
+```
+
+Then write the JSON file. Example for a user who wants `~/projects` (read-write) and `~/docs` (read-only) with non-main read-only:
+
+```bash
+cat > ~/.config/nanoclaw/mount-allowlist.json << 'EOF'
+{
+  "allowedRoots": [
+    {
+      "path": "~/projects",
+      "allowReadWrite": true,
+      "description": "Development projects"
+    },
+    {
+      "path": "~/docs",
+      "allowReadWrite": false,
+      "description": "Reference documents"
+    }
+  ],
+  "blockedPatterns": [],
+  "nonMainReadOnly": true
+}
+EOF
+```
+
+Verify the file:
+
+```bash
+cat ~/.config/nanoclaw/mount-allowlist.json
+```
+
+Tell the user:
+> ✓ Mount allowlist configured. The following directories are now accessible:
+> - `~/projects` (read-write)
+> - `~/docs` (read-only)
+>
+> **Security notes:**
+> - Sensitive paths (`.ssh`, `.gnupg`, `.aws`, credentials) are always blocked
+> - This config file is stored outside the project, so agents cannot modify it
+> - Changes require restarting the NanoClaw service
+>
+> To grant a group access to a directory, add it to their config in `data/registered_groups.json`:
+> ```json
+> "containerConfig": {
+>   "additionalMounts": [
+>     { "hostPath": "~/projects/my-app", "containerPath": "my-app", "readonly": false }
+>   ]
+> }
+> ```
+
+---
+
+## 12. Configure launchd Service (macOS Background Service)
+
+**Optional: Run NanoClaw as a background service on macOS.**
+
+**Skip this if:**
+- You're on Linux (use systemd instead)
+- You prefer to run `npm start` manually
+
+Generate the plist file with correct paths automatically:
+
+```bash
+NODE_PATH=$(which node)
+PROJECT_PATH=$(pwd)
+HOME_PATH=$HOME
+
+cat > ~/Library/LaunchAgents/com.nanoclaw.plist << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nanoclaw</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>\${NODE_PATH}</string>
+        <string>\${PROJECT_PATH}/dist/index.js</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>\${PROJECT_PATH}</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:\${HOME_PATH}/.local/bin</string>
+        <key>HOME</key>
+        <string>\${HOME_PATH}</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>\${PROJECT_PATH}/logs/nanoclaw.log</string>
+    <key>StandardErrorPath</key>
+    <string>\${PROJECT_PATH}/logs/nanoclaw.error.log</string>
+</dict>
+</plist>
+EOF
+
+echo "✓ Created launchd plist with:"
+echo "  Node: \${NODE_PATH}"
+echo "  Project: \${PROJECT_PATH}"
+```
+
+Build and start the service:
+
+```bash
+npm run build
+mkdir -p logs
+launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
+```
+
+Verify it's running:
+```bash
+launchctl list | grep nanoclaw
+```
+
+**Useful commands:**
+
+```bash
+# Restart service
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw
+
+# Stop service
+launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
+
+# View logs
+tail -f logs/nanoclaw.log
+tail -f logs/nanoclaw.error.log
+```
+
+---
+
 ## Optional: Tailscale Funnel Setup
 
 **For PWA users who want public HTTPS access.**
@@ -366,6 +623,35 @@ Tell them:
 
 ---
 
+## Test Your Setup
+
+### For PWA users:
+
+Tell them:
+> **Test the PWA:**
+> 1. Open the URL (http://localhost:3000 or your Tailscale URL)
+> 2. Enter the token or scan the QR code
+> 3. Send a message like "hello"
+> 4. You should get a response from the agent
+
+### For WhatsApp users:
+
+Tell them:
+> **Test WhatsApp:**
+> Send `@Jimmy hello` (or your custom trigger) in your registered chat.
+
+Check the logs:
+```bash
+tail -f logs/nanoclaw.log
+```
+
+You should see:
+- Message received
+- Container agent starting
+- Response being sent
+
+---
+
 ## Troubleshooting
 
 **Container build fails:**
@@ -384,3 +670,28 @@ Tell them:
 - Tailscale not configured (optional)
 - App still works on `http://localhost:3000`
 - Setup Tailscale or set `tailscale_funnel: false`
+
+**Service not starting (launchd):**
+- Check `logs/nanoclaw.error.log`
+- Verify paths in plist: `cat ~/Library/LaunchAgents/com.nanoclaw.plist`
+
+**Container agent fails with "Claude Code process exited with code 1":**
+- Ensure the container runtime is running:
+  - Apple Container: `container system start`
+  - Docker: `docker info` (start Docker Desktop on macOS, or `sudo systemctl start docker` on Linux)
+- Check container logs: `cat groups/main/logs/container-*.log | tail -50`
+
+**No response to messages:**
+- Verify the trigger pattern matches (e.g., `@Jimmy` at start of message for WhatsApp)
+- Check that the chat JID is in `data/registered_groups.json` (WhatsApp)
+- Check `logs/nanoclaw.log` for errors
+
+**WhatsApp disconnected:**
+- The service will show a macOS notification
+- Run `npm run auth` to re-authenticate
+- Restart the service: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
+
+**Unload launchd service:**
+```bash
+launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
+```
