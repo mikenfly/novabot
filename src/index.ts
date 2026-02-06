@@ -795,41 +795,48 @@ async function startMessageLoop(): Promise<void> {
 }
 
 function ensureContainerSystemRunning(): void {
+  // Try Docker first (cross-platform)
   try {
-    execSync('container system status', { stdio: 'pipe' });
-    logger.debug('Apple Container system already running');
+    execSync('docker info', { stdio: 'pipe' });
+    logger.debug('Docker is running');
+    return;
   } catch {
-    logger.info('Starting Apple Container system...');
+    // Docker not available, try Apple Container (macOS only)
     try {
-      execSync('container system start', { stdio: 'pipe', timeout: 30000 });
-      logger.info('Apple Container system started');
-    } catch (err) {
-      logger.error({ err }, 'Failed to start Apple Container system');
-      console.error(
-        '\n╔════════════════════════════════════════════════════════════════╗',
-      );
-      console.error(
-        '║  FATAL: Apple Container system failed to start                 ║',
-      );
-      console.error(
-        '║                                                                ║',
-      );
-      console.error(
-        '║  Agents cannot run without Apple Container. To fix:           ║',
-      );
-      console.error(
-        '║  1. Install from: https://github.com/apple/container/releases ║',
-      );
-      console.error(
-        '║  2. Run: container system start                               ║',
-      );
-      console.error(
-        '║  3. Restart NanoClaw                                          ║',
-      );
-      console.error(
-        '╚════════════════════════════════════════════════════════════════╝\n',
-      );
-      throw new Error('Apple Container system is required but failed to start');
+      execSync('container system status', { stdio: 'pipe' });
+      logger.debug('Apple Container system already running');
+      return;
+    } catch {
+      logger.info('Starting Apple Container system...');
+      try {
+        execSync('container system start', { stdio: 'pipe', timeout: 30000 });
+        logger.info('Apple Container system started');
+        return;
+      } catch (err) {
+        logger.error({ err }, 'Failed to start container runtime');
+        console.error(
+          '\n╔════════════════════════════════════════════════════════════════╗',
+        );
+        console.error(
+          '║  FATAL: No container runtime available                        ║',
+        );
+        console.error(
+          '║                                                                ║',
+        );
+        console.error(
+          '║  NanoClaw requires Docker or Apple Container. To fix:         ║',
+        );
+        console.error(
+          '║  - Install Docker: https://docs.docker.com/get-docker/        ║',
+        );
+        console.error(
+          '║  - Or Apple Container: github.com/apple/container/releases    ║',
+        );
+        console.error(
+          '╚════════════════════════════════════════════════════════════════╝\n',
+        );
+        throw new Error('Container runtime is required but not available');
+      }
     }
   }
 

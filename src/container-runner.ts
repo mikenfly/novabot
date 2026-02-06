@@ -1,8 +1,8 @@
 /**
  * Container Runner for NanoClaw
- * Spawns agent execution in Apple Container and handles IPC
+ * Spawns agent execution in Apple Container or Docker and handles IPC
  */
-import { exec, spawn } from 'child_process';
+import { exec, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -30,6 +30,17 @@ function getHomeDir(): string {
     );
   }
   return home;
+}
+
+function detectContainerRuntime(): 'docker' | 'container' {
+  // Try Docker first (cross-platform)
+  try {
+    execSync('which docker', { stdio: 'pipe' });
+    return 'docker';
+  } catch {
+    // Fall back to Apple Container
+    return 'container';
+  }
 }
 
 export interface ContainerInput {
@@ -223,7 +234,11 @@ export async function runContainerAgent(
   fs.mkdirSync(logsDir, { recursive: true });
 
   return new Promise((resolve) => {
-    const container = spawn('container', containerArgs, {
+    // Auto-detect container runtime
+    const runtime = detectContainerRuntime();
+    logger.debug({ runtime }, 'Using container runtime');
+
+    const container = spawn(runtime, containerArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
