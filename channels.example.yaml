@@ -1,0 +1,109 @@
+# Exemples de configuration NanoClaw Channels
+# Copiez ce fichier en channels.yaml et adaptez selon vos besoins
+
+# ============================================================
+# EXEMPLE 1 : PWA uniquement (usage personnel, recommandé)
+# ============================================================
+# channels:
+#   pwa:
+#     enabled: true
+#     port: 3000
+#     standalone: true          # Conversations directes avec l'agent
+#     tailscale_funnel: true    # Accès HTTPS public via Tailscale
+#
+#   whatsapp:
+#     enabled: false
+#
+#   telegram:
+#     enabled: false
+#
+#   slack:
+#     enabled: false
+
+# ============================================================
+# EXEMPLE 2 : WhatsApp uniquement (groupes existants)
+# ============================================================
+# channels:
+#   pwa:
+#     enabled: false
+#
+#   whatsapp:
+#     enabled: true
+#     trigger: "@Jimmy"         # Mot-clé pour déclencher
+#
+#   telegram:
+#     enabled: false
+#
+#   slack:
+#     enabled: false
+
+# ============================================================
+# EXEMPLE 3 : PWA + WhatsApp synchronisés (multi-interface)
+# ============================================================
+# channels:
+#   pwa:
+#     enabled: true
+#     port: 3000
+#     standalone: false         # Synchronisé avec WhatsApp
+#     tailscale_funnel: true
+#
+#   whatsapp:
+#     enabled: true
+#     trigger: "@Jimmy"
+#
+#   telegram:
+#     enabled: false
+#
+#   slack:
+#     enabled: false
+
+# ============================================================
+# EXEMPLE 4 : Tous les channels (avancé)
+# ============================================================
+# channels:
+#   pwa:
+#     enabled: true
+#     port: 3000
+#     standalone: false
+#     tailscale_funnel: true
+#
+#   whatsapp:
+#     enabled: true
+#     trigger: "@Jimmy"
+#
+#   telegram:
+#     enabled: true            # À implémenter via /add-telegram
+#
+#   slack:
+#     enabled: true            # À implémenter via /add-slack
+
+# ============================================================
+# Configuration par défaut (active par défaut)
+# ============================================================
+channels:
+  pwa:
+    enabled: true
+    port: 3000
+    standalone: true
+    tailscale_funnel: true
+
+  whatsapp:
+    enabled: false
+    trigger: "@Jimmy"
+
+  telegram:
+    enabled: false
+
+  slack:
+    enabled: false
+
+# Configuration générale
+assistant:
+  name: "Jimmy"
+  timezone: "Europe/Paris"
+
+# Chemins (ne pas modifier sauf si nécessaire)
+paths:
+  data_dir: "./data"
+  groups_dir: "./groups"
+  store_dir: "./store"

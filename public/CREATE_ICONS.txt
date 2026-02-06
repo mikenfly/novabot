@@ -1,0 +1,33 @@
+ICÔNES MANQUANTES
+==================
+
+Les icônes sont nécessaires pour installer la PWA sur iOS.
+
+Option 1: Utiliser des images quelconques
+------------------------------------------
+Trouvez deux images carrées (PNG) et renommez-les:
+- icon-192.png (minimum 192x192 pixels)
+- icon-512.png (minimum 512x512 pixels)
+
+Option 2: Créer avec Python
+----------------------------
+pip3 install Pillow
+python3 << 'PYTHON'
+from PIL import Image
+img192 = Image.new('RGB', (192, 192), color='#00b894')
+img192.save('icon-192.png')
+img512 = Image.new('RGB', (512, 512), color='#00b894')
+img512.save('icon-512.png')
+PYTHON
+
+Option 3: ImageMagick
+----------------------
+convert -size 192x192 xc:#00b894 icon-192.png
+convert -size 512x512 xc:#00b894 icon-512.png
+
+Option 4: En ligne
+------------------
+Utilisez https://favicon.io/ ou similaire pour créer des icônes
+
+L'application fonctionnera sans icônes, mais elles sont nécessaires 
+pour l'installation sur l'écran d'accueil iOS.

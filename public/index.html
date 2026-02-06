@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1a1a1a">
+  <title>NanoClaw</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Login Screen -->
+    <div id="login-screen" class="screen">
+      <div class="login-container">
+        <h1>🤖 NanoClaw</h1>
+        <p class="subtitle">Assistant personnel Claude</p>
+        <form id="login-form">
+          <div class="input-group">
+            <input
+              type="password"
+              id="password"
+              placeholder="Token d'accès"
+              required
+              autocomplete="off"
+            />
+          </div>
+          <button type="submit" class="btn-primary">Se connecter</button>
+          <p class="help-text">Entrez votre token d'accès généré avec <code>node scripts/generate-token.js</code></p>
+        </form>
+        <div id="login-error" class="error-message"></div>
+      </div>
+    </div>
+
+    <!-- Chat Screen -->
+    <div id="chat-screen" class="screen hidden">
+      <!-- Header -->
+      <header class="chat-header">
+        <button id="menu-btn" class="icon-btn" aria-label="Menu">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <div class="current-chat">
+          <h2 id="chat-title">Sélectionnez une conversation</h2>
+          <span id="connection-status" class="status-indicator"></span>
+        </div>
+        <button id="refresh-btn" class="icon-btn" aria-label="Actualiser">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+        </button>
+      </header>
+
+      <!-- Sidebar -->
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+          <h3>Conversations</h3>
+          <button id="close-sidebar" class="icon-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div id="conversations-list" class="conversations-list"></div>
+        <div class="sidebar-footer">
+          <button id="logout-btn" class="btn-secondary">Déconnexion</button>
+        </div>
+      </aside>
+
+      <!-- Main Chat Area -->
+      <main class="chat-main">
+        <div id="messages-container" class="messages-container">
+          <div class="empty-state">
+            <p>Sélectionnez une conversation pour commencer</p>
+          </div>
+        </div>
+
+        <!-- Message Input -->
+        <div class="message-input-container">
+          <div class="message-input-wrapper">
+            <textarea
+              id="message-input"
+              placeholder="Écrivez votre message..."
+              rows="1"
+              disabled
+            ></textarea>
+            <button id="send-btn" class="btn-send" disabled aria-label="Envoyer">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
