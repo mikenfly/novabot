@@ -921,6 +921,11 @@ async function main(): Promise<void> {
     console.log('✓ Initialisation authentification...');
     initializeAuth();
 
+    // Check if we have any permanent devices already
+    const { getAllTokens } = await import('./auth.js');
+    const devices = getAllTokens();
+    const hasDevices = devices.length > 0;
+
     // Create default PWA conversation in standalone mode
     if (pwaConfig.standalone) {
       createPWAConversation('Conversation principale');
@@ -932,37 +937,47 @@ async function main(): Promise<void> {
     startWebServer(pwaConfig.port, () => registeredGroups, sendMessage);
     console.log('✓ Serveur web démarré');
 
-    // Setup Tailscale Funnel if enabled
-    if (pwaConfig.tailscale_funnel) {
-      logger.info('Configuration de l\'accès web...');
-      setupTailscaleFunnel().then(async (funnelInfo) => {
-        if (funnelInfo) {
-          logger.info('Tailscale Funnel configuré avec succès');
+    // Only show QR code for first setup (no devices yet)
+    if (!hasDevices) {
+      console.log('\n📱 Premier démarrage - Configuration device...\n');
+
+      // Setup Tailscale Funnel if enabled
+      if (pwaConfig.tailscale_funnel) {
+        logger.info('Configuration de l\'accès web...');
+        setupTailscaleFunnel().then(async (funnelInfo) => {
+          if (funnelInfo) {
+            logger.info('Tailscale Funnel configuré avec succès');
+            const token = await ensureAccessToken();
+            displayConnectionQR(funnelInfo.funnelUrl, token);
+          } else {
+            logger.info('Tailscale Funnel non disponible - accès local');
+            const token = await ensureAccessToken();
+            console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+            console.log(`🌐 PWA disponible sur le réseau local`);
+            console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+            console.log(`📍 URL: http://localhost:${pwaConfig.port}`);
+            console.log(`🔑 Token: ${token}`);
+            console.log(`\n💡 Pour Tailscale Funnel public:`);
+            console.log(`   sudo tailscale set --operator=$USER`);
+            console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+          }
+        }).catch(async (err) => {
+          logger.error({ err }, 'Erreur configuration Funnel');
           const token = await ensureAccessToken();
-          displayConnectionQR(funnelInfo.funnelUrl, token);
-        } else {
-          logger.info('Tailscale Funnel non disponible - accès local');
-          const token = await ensureAccessToken();
-          console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-          console.log(`🌐 PWA disponible sur le réseau local`);
-          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
-          console.log(`📍 URL: http://localhost:${pwaConfig.port}`);
-          console.log(`🔑 Token: ${token}`);
-          console.log(`\n💡 Pour Tailscale Funnel public:`);
-          console.log(`   sudo tailscale set --operator=$USER`);
-          console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
-        }
-      }).catch(async (err) => {
-        logger.error({ err }, 'Erreur configuration Funnel');
+          console.log(`\n🌐 PWA: http://localhost:${pwaConfig.port}`);
+          console.log(`🔑 Token: ${token}\n`);
+        });
+      } else {
+        // No Tailscale, just show local URL
         const token = await ensureAccessToken();
         console.log(`\n🌐 PWA: http://localhost:${pwaConfig.port}`);
         console.log(`🔑 Token: ${token}\n`);
-      });
+      }
     } else {
-      // No Tailscale, just show local URL
-      const token = await ensureAccessToken();
-      console.log(`\n🌐 PWA: http://localhost:${pwaConfig.port}`);
-      console.log(`🔑 Token: ${token}\n`);
+      // Devices already exist, just show simple message
+      console.log(`\n✅ PWA démarrée sur http://localhost:${pwaConfig.port}`);
+      console.log(`📱 ${devices.length} device(s) connecté(s)`);
+      console.log(`\n💡 Pour ajouter un device: npm start -- --generate-token\n`);
     }
   }
 

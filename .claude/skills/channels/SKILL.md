@@ -1,238 +1,416 @@
 ---
 name: channels
-description: Configure NanoClaw channels (PWA, WhatsApp, Telegram, Slack). Interactive guide to enable/disable interfaces, choose between standalone and synchronized modes, and optimize setup for personal or team use.
+description: Configure or change NanoClaw channels (PWA, WhatsApp) interactively. Enable/disable interfaces, switch between standalone and synchronized modes. Based on docs/channels.md.
 ---
 
-# Channels Management
+# Channels Configuration
 
-Ce skill aide l'utilisateur à configurer les channels (interfaces) de NanoClaw.
+Interactive guide to configure NanoClaw interfaces. See [docs/channels.md](../../docs/channels.md) for full reference.
 
-## Ton rôle
+**Goal:** Help users switch between PWA, WhatsApp, or both easily.
 
-Tu es un assistant qui guide l'utilisateur dans la configuration des channels NanoClaw. Tu dois :
+---
 
-1. **Comprendre les besoins** de l'utilisateur
-2. **Recommander** la meilleure configuration
-3. **Modifier** `channels.yaml` selon les choix
-4. **Expliquer** les changements
+## Your Role
 
-## Channels disponibles
+You guide the user through channel configuration by:
 
-### PWA (Progressive Web App)
-- Interface web moderne
-- Accessible depuis navigateur ou iOS
-- **Modes** :
-  - `standalone: true` : Indépendant, conversations directes avec l'agent
-  - `standalone: false` : Synchronisé avec WhatsApp
-- **Options** :
-  - `port` : Port du serveur (défaut 3000)
-  - `tailscale_funnel` : Exposition publique HTTPS
+1. **Reading** current `channels.yaml`
+2. **Understanding** what they want
+3. **Recommending** best config
+4. **Modifying** `channels.yaml`
+5. **Explaining** next steps
 
-**Recommandé pour** : Usage personnel, interface moderne, pas besoin de WhatsApp
+---
 
-### WhatsApp
-- Bot de messagerie dans les groupes
-- Nécessite authentification téléphone
-- **Options** :
-  - `trigger` : Mot-clé pour déclencher (ex: "@Jimmy")
+## Step 1: Check Current Config
 
-**Recommandé pour** : Groupes existants, équipes qui utilisent déjà WhatsApp
+Read `channels.yaml`:
 
-### Telegram (à venir)
-- Bot Telegram
-- Pas encore implémenté
-
-### Slack (à venir)
-- Bot Slack pour équipes
-- Pas encore implémenté
-
-## Workflow
-
-### 1. Comprendre le besoin
-
-Pose des questions pour comprendre :
-- Utilisation personnelle ou en équipe ?
-- Préférence pour interface moderne ou messagerie existante ?
-- Besoin de WhatsApp ?
-- Besoin d'accès externe (Tailscale) ?
-
-### 2. Recommander
-
-Selon les réponses :
-
-**Usage personnel, moderne** :
-```yaml
-pwa:
-  enabled: true
-  standalone: true
-  tailscale_funnel: true
-whatsapp:
-  enabled: false
-```
-
-**Équipe avec WhatsApp** :
-```yaml
-pwa:
-  enabled: true
-  standalone: false  # Synchronisé
-whatsapp:
-  enabled: true
-  trigger: "@Jimmy"
-```
-
-**WhatsApp uniquement** :
-```yaml
-pwa:
-  enabled: false
-whatsapp:
-  enabled: true
-```
-
-### 3. Modifier la config
-
-1. **Lire** `channels.yaml`
-2. **Modifier** selon les choix
-3. **Écrire** le nouveau fichier
-4. **Expliquer** ce qui a changé
-
-### 4. Instructions post-config
-
-Après modification :
-```bash
-npm run build
-npm start
-```
-
-Si WhatsApp activé pour la première fois :
-```bash
-npm run auth  # Scanner QR code
-```
-
-## Exemples d'interactions
-
-### Exemple 1 : Premier setup
-
-**User** : "/channels"
-
-**You** :
-```
-Configurons les interfaces de NanoClaw !
-
-Questions :
-1. Utilisation personnelle ou en équipe ?
-2. Voulez-vous une interface web moderne ?
-3. Besoin de WhatsApp ?
-```
-
-**User** : "Personnel, interface web, pas de WhatsApp"
-
-**You** :
-```
-Parfait ! Je recommande :
-- ✅ PWA activée (mode standalone)
-- ✅ Tailscale Funnel (accès HTTPS public)
-- ❌ WhatsApp désactivé
-
-Cette config vous donnera une interface web moderne accessible depuis
-n'importe où, sans dépendre de WhatsApp.
-
-[Modifier channels.yaml avec ces paramètres]
-
-Configuration appliquée ! Lancez :
-  npm start
-
-Un QR code s'affichera pour vous connecter depuis iOS.
-```
-
-### Exemple 2 : Activer WhatsApp
-
-**User** : "Je veux ajouter WhatsApp"
-
-**You** :
-```
-D'accord ! Quelques questions :
-
-1. Voulez-vous garder la PWA aussi ?
-2. Si oui, synchroniser PWA avec WhatsApp ou séparer ?
-3. Quel mot-clé pour déclencher l'assistant ? (ex: @Jimmy)
-```
-
-**User** : "Garder PWA, synchroniser, @Andy"
-
-**You** :
-```
-Configuration mise à jour :
-- ✅ PWA (synchronisée avec WhatsApp)
-- ✅ WhatsApp (trigger: @Andy)
-
-[Modifier channels.yaml]
-
-Pour finaliser :
-1. npm run auth     # Authentifier WhatsApp
-2. npm start        # Démarrer
-
-Les conversations WhatsApp apparaîtront dans la PWA !
-```
-
-### Exemple 3 : Voir config actuelle
-
-**User** : "Quelle est ma config ?"
-
-**You** :
-```
-Configuration actuelle :
-
-✅ PWA
-   - Mode: standalone
-   - Port: 3000
-   - Tailscale Funnel: activé
-
-❌ WhatsApp (désactivé)
-❌ Telegram (pas encore disponible)
-❌ Slack (pas encore disponible)
-
-Voulez-vous modifier quelque chose ?
-```
-
-## Commandes importantes
-
-### Lire la config
 ```bash
 cat channels.yaml
 ```
 
-### Tester la config
+If it doesn't exist:
 ```bash
-npm run build && npm start
+# Check if channels.example.yaml exists
+cat channels.example.yaml 2>/dev/null || echo "No example found"
 ```
 
-### Reset à défaut
-```bash
-rm channels.yaml
-npm start  # Génère une config par défaut
+Show the user their current setup:
+
+```
+📊 Current Configuration:
+
+PWA: [enabled/disabled]
+  Mode: [standalone/synchronized]
+  Port: [port]
+  Tailscale Funnel: [yes/no]
+
+WhatsApp: [enabled/disabled]
+  Trigger: [@Jimmy]
+
+Assistant Name: [Jimmy]
 ```
 
-## Notes importantes
+---
 
-- **Rebuild requis** : Après modification, toujours faire `npm run build`
-- **WhatsApp nécessite auth** : `npm run auth` si activé pour la première fois
-- **Port en conflit** : Changer `pwa.port` si 3000 occupé
-- **Tailscale optionnel** : Mettre `tailscale_funnel: false` si pas besoin
+## Step 2: Understand What They Want
 
-## Fichiers à manipuler
+**Use AskUserQuestion** to ask:
 
-- **Config** : `channels.yaml` (racine du projet)
-- **Doc** : `docs/CHANNELS.md` (référence complète)
-- **Exemple** : Tu peux créer `channels.example.yaml` pour exemples
+> What would you like to do?
+>
+> **Switch to PWA only** - Modern web interface, no WhatsApp
+> **Switch to WhatsApp only** - Bot in group chats
+> **Enable both** - PWA + WhatsApp synchronized
+> **Change settings** - Modify port, trigger word, etc.
 
-## Garde-fous
+Based on their answer, follow the appropriate section below.
 
-Avant de modifier :
-1. **Backup** : Sauvegarder `channels.yaml` actuel
-2. **Validation** : Vérifier syntaxe YAML
-3. **Explication** : Expliquer clairement les changements
+---
 
-Ne jamais :
-- Supprimer la section `channels`
-- Utiliser des tabulations (YAML nécessite espaces)
-- Oublier les `:` après les clés
+## Option A: Switch to PWA Only
+
+Perfect for personal use, modern interface.
+
+**Modify channels.yaml:**
+
+```yaml
+channels:
+  pwa:
+    enabled: true
+    port: 3000
+    standalone: true
+    tailscale_funnel: true
+
+  whatsapp:
+    enabled: false
+    trigger: "@Jimmy"
+
+assistant:
+  name: "Jimmy"
+  timezone: "Europe/Paris"
+
+paths:
+  data_dir: "./data"
+  groups_dir: "./groups"
+  store_dir: "./store"
+```
+
+**Tell them:**
+
+> ✓ Switched to PWA standalone mode.
+>
+> **Next steps:**
+> ```bash
+> npm run build
+> npm start
+> ```
+>
+> You'll see:
+> - A QR code to connect your phone (if Tailscale configured)
+> - URL: http://localhost:3000
+> - A temporary access token
+>
+> No WhatsApp needed! Just scan the QR or enter the token.
+
+---
+
+## Option B: Switch to WhatsApp Only
+
+Good for teams already using WhatsApp.
+
+**Modify channels.yaml:**
+
+```yaml
+channels:
+  pwa:
+    enabled: false
+
+  whatsapp:
+    enabled: true
+    trigger: "@Jimmy"
+
+assistant:
+  name: "Jimmy"
+  timezone: "Europe/Paris"
+
+paths:
+  data_dir: "./data"
+  groups_dir: "./groups"
+  store_dir: "./store"
+```
+
+**Check if WhatsApp is already authenticated:**
+
+```bash
+ls -la data/auth_info_baileys 2>/dev/null && echo "✓ Already authenticated" || echo "✗ Need to authenticate"
+```
+
+**Tell them:**
+
+> ✓ Switched to WhatsApp mode.
+>
+> **Next steps:**
+> ```bash
+> npm run build
+> npm run auth    # If not authenticated yet
+> npm start
+> ```
+>
+> Test by sending `@Jimmy hello` in WhatsApp.
+
+---
+
+## Option C: Enable Both (Synchronized)
+
+Best of both worlds - PWA shows WhatsApp conversations.
+
+**Modify channels.yaml:**
+
+```yaml
+channels:
+  pwa:
+    enabled: true
+    port: 3000
+    standalone: false  # Synchronized with WhatsApp
+    tailscale_funnel: true
+
+  whatsapp:
+    enabled: true
+    trigger: "@Jimmy"
+
+assistant:
+  name: "Jimmy"
+  timezone: "Europe/Paris"
+
+paths:
+  data_dir: "./data"
+  groups_dir: "./groups"
+  store_dir: "./store"
+```
+
+**Check WhatsApp auth:**
+
+```bash
+ls -la data/auth_info_baileys 2>/dev/null && echo "✓ Already authenticated" || echo "✗ Need to authenticate"
+```
+
+**Tell them:**
+
+> ✓ Enabled both PWA and WhatsApp in synchronized mode.
+>
+> **Next steps:**
+> ```bash
+> npm run build
+> npm run auth    # If not authenticated yet
+> npm start
+> ```
+>
+> Your WhatsApp conversations will appear in the PWA!
+
+---
+
+## Option D: Change Settings
+
+For fine-tuning without switching channels.
+
+Ask what they want to change:
+
+### Change Assistant Name
+
+Ask for new name (current: [current_name]).
+
+Update in `channels.yaml`:
+```yaml
+assistant:
+  name: "NewName"
+```
+
+And update trigger if WhatsApp enabled:
+```yaml
+whatsapp:
+  trigger: "@NewName"
+```
+
+### Change Trigger Word (WhatsApp only)
+
+Ask for new trigger (current: [@Jimmy]).
+
+Update in `channels.yaml`:
+```yaml
+whatsapp:
+  trigger: "@NewTrigger"
+```
+
+### Change PWA Port
+
+Ask for new port (current: 3000).
+
+Update in `channels.yaml`:
+```yaml
+pwa:
+  port: 3001
+```
+
+### Toggle Tailscale Funnel
+
+Current: [enabled/disabled]
+
+Update in `channels.yaml`:
+```yaml
+pwa:
+  tailscale_funnel: false  # or true
+```
+
+### Switch PWA Mode (standalone ↔ synchronized)
+
+Current: [standalone/synchronized]
+
+**Standalone → Synchronized:**
+Requires WhatsApp enabled.
+
+```yaml
+pwa:
+  standalone: false
+
+whatsapp:
+  enabled: true
+```
+
+**Synchronized → Standalone:**
+PWA becomes independent.
+
+```yaml
+pwa:
+  standalone: true
+```
+
+---
+
+## After Any Change
+
+Always remind them:
+
+```bash
+npm run build    # Recompile
+npm start        # Restart with new config
+```
+
+**If they enabled WhatsApp for the first time:**
+```bash
+npm run auth     # Authenticate before starting
+```
+
+---
+
+## Common Scenarios
+
+### "I want to access from my phone"
+
+**Current setup:** PWA enabled
+
+**Recommendation:**
+1. Ensure `tailscale_funnel: true` in channels.yaml
+2. Setup Tailscale: `sudo tailscale set --operator=$USER`
+3. Restart: `npm start`
+4. Scan the QR code with your phone
+
+### "WhatsApp keeps disconnecting"
+
+**Check:**
+```bash
+ls -la data/auth_info_baileys
+```
+
+**Solution:**
+```bash
+rm -rf data/auth_info_baileys
+npm run auth     # Re-authenticate
+npm start
+```
+
+### "I want to try WhatsApp but keep PWA"
+
+**Recommendation:** Enable both in synchronized mode (Option C above).
+
+This way:
+- WhatsApp messages show up in PWA
+- You can use either interface
+- Everything stays in sync
+
+### "Port 3000 is already in use"
+
+**Check what's using it:**
+```bash
+lsof -i :3000
+```
+
+**Change port in channels.yaml:**
+```yaml
+pwa:
+  port: 3001  # or any free port
+```
+
+---
+
+## Safety Checks
+
+Before modifying `channels.yaml`:
+
+1. **Backup current config:**
+   ```bash
+   cp channels.yaml channels.yaml.backup
+   ```
+
+2. **Validate YAML syntax** after changes
+
+3. **Explain what changed** clearly
+
+**Never:**
+- Delete the `channels` section entirely
+- Use tabs (YAML requires spaces)
+- Forget `:` after keys
+- Remove `assistant` or `paths` sections
+
+---
+
+## Quick Reference
+
+### PWA Standalone (Personal)
+```yaml
+pwa: enabled: true, standalone: true
+whatsapp: enabled: false
+```
+
+### WhatsApp Only (Groups)
+```yaml
+pwa: enabled: false
+whatsapp: enabled: true
+```
+
+### Both Synchronized (Advanced)
+```yaml
+pwa: enabled: true, standalone: false
+whatsapp: enabled: true
+```
+
+---
+
+## Helpful Commands
+
+```bash
+cat channels.yaml              # View config
+nano channels.yaml            # Edit manually
+npm run build && npm start    # Apply changes
+npm run auth                  # Authenticate WhatsApp
+```
+
+---
+
+## Documentation Links
+
+Point users to:
+- [docs/channels.md](../../docs/channels.md) - Full channel reference
+- [docs/quickstart.md](../../docs/quickstart.md) - Quick setup guide
