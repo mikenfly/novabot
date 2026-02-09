@@ -11,7 +11,7 @@ interface TailscaleInfo {
  * Configure Tailscale Funnel automatiquement
  * Retourne l'URL publique ou null si échec
  */
-export async function setupTailscaleFunnel(port: number): Promise<TailscaleInfo | null> {
+export async function setupTailscaleFunnel(port: number, funnelPort?: number): Promise<TailscaleInfo | null> {
   try {
     // Vérifier que Tailscale est actif
     try {
@@ -21,22 +21,16 @@ export async function setupTailscaleFunnel(port: number): Promise<TailscaleInfo 
       return null;
     }
 
-    logger.info('Configuration Tailscale Funnel...');
+    const httpsPort = funnelPort || 443;
+    logger.info({ localPort: port, httpsPort }, 'Configuration Tailscale Funnel...');
 
-    // Arrêter les anciens serves/funnels
+    // Configurer serve + funnel sur le port HTTPS choisi
     try {
-      execSync('tailscale funnel reset', { stdio: 'pipe' });
-    } catch {
-      // Pas grave si rien à arrêter
-    }
-
-    // Configurer funnel avec la nouvelle syntaxe simplifiée
-    try {
-      // La nouvelle syntaxe : tailscale funnel --bg <port>
-      // Cela configure automatiquement serve + funnel en arrière-plan
-      execSync(`tailscale funnel --bg ${port}`, {
-        stdio: 'pipe',
-      });
+      if (httpsPort === 443) {
+        execSync(`tailscale funnel --bg ${port}`, { stdio: 'pipe' });
+      } else {
+        execSync(`tailscale funnel --bg --https=${httpsPort} http://localhost:${port}`, { stdio: 'pipe' });
+      }
     } catch (err: any) {
       if (err.message?.includes('Access denied') || err.message?.includes('denied')) {
         logger.warn('Permissions Tailscale manquantes');
@@ -48,20 +42,22 @@ export async function setupTailscaleFunnel(port: number): Promise<TailscaleInfo 
       throw err;
     }
 
-    // Obtenir l'URL (serve ou funnel)
-    const statusOutput = execSync('tailscale serve status', {
+    // Obtenir le hostname Tailscale
+    const statusOutput = execSync('tailscale status --json', {
       encoding: 'utf-8',
     });
+    const tsStatus = JSON.parse(statusOutput);
+    const dnsName = tsStatus.Self?.DNSName?.replace(/\.$/, '');
 
-    // Parser l'output pour extraire l'URL
-    const urlMatch = statusOutput.match(/https:\/\/[^\s]+/);
-    if (!urlMatch) {
-      logger.warn('Impossible de déterminer l\'URL Tailscale');
+    if (!dnsName) {
+      logger.warn('Impossible de déterminer le hostname Tailscale');
       return null;
     }
 
-    const funnelUrl = urlMatch[0];
-    const hostname = funnelUrl.replace(/^https:\/\//, '').split(':')[0];
+    const funnelUrl = httpsPort === 443
+      ? `https://${dnsName}`
+      : `https://${dnsName}:${httpsPort}`;
+    const hostname = dnsName;
 
     // Vérifier si c'est en mode public ou tailnet only
     const isPublic = !statusOutput.includes('(tailnet only)');

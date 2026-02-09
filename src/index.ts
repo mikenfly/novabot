@@ -944,7 +944,7 @@ async function main(): Promise<void> {
       // Setup Tailscale Funnel if enabled
       if (pwaConfig.tailscale_funnel) {
         logger.info('Configuration de l\'accès web...');
-        setupTailscaleFunnel(pwaConfig.port).then(async (funnelInfo) => {
+        setupTailscaleFunnel(pwaConfig.port, pwaConfig.funnel_port).then(async (funnelInfo) => {
           if (funnelInfo) {
             logger.info('Tailscale Funnel configuré avec succès');
             const token = await ensureAccessToken();

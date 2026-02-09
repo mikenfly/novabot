@@ -16,6 +16,7 @@ export interface ChannelsConfig {
       port: number;
       standalone: boolean;
       tailscale_funnel: boolean;
+      funnel_port?: number;
     };
     whatsapp?: {
       enabled: boolean;
@@ -54,6 +55,17 @@ export function loadChannelsConfig(): ChannelsConfig {
   try {
     const fileContents = fs.readFileSync(configPath, 'utf8');
     config = yaml.load(fileContents) as ChannelsConfig;
+    if (config.channels.pwa) {
+      if (process.env.WEB_PORT) {
+        config.channels.pwa.port = parseInt(process.env.WEB_PORT, 10);
+      }
+      if (process.env.TAILSCALE_FUNNEL !== undefined) {
+        config.channels.pwa.tailscale_funnel = process.env.TAILSCALE_FUNNEL === 'true';
+      }
+      if (process.env.FUNNEL_PORT) {
+        config.channels.pwa.funnel_port = parseInt(process.env.FUNNEL_PORT, 10);
+      }
+    }
     logger.info('Channels configuration loaded');
     return config;
   } catch (err) {
