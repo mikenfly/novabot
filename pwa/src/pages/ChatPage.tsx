@@ -5,6 +5,7 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import AppLayout from '../components/Layout/AppLayout';
 import Sidebar from '../components/Sidebar/Sidebar';
 import ChatArea from '../components/Chat/ChatArea';
+import ErrorBoundary from '../components/Common/ErrorBoundary';
 
 export default function ChatPage() {
   const initialize = useAuthStore((s) => s.initialize);
@@ -19,7 +20,9 @@ export default function ChatPage() {
 
   return (
     <AppLayout sidebar={<Sidebar />}>
-      <ChatArea />
+      <ErrorBoundary>
+        <ChatArea />
+      </ErrorBoundary>
     </AppLayout>
   );
 }

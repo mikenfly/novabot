@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { ApiRequestError } from '../services/api';
 import './LoginPage.css';
@@ -12,6 +12,7 @@ export default function LoginPage() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -43,14 +44,17 @@ export default function LoginPage() {
     [login, navigate, isSubmitting],
   );
 
-  // Auto-submit from QR code URL param
+  // Auto-submit from QR code token (URL param or location state)
   useEffect(() => {
     const urlToken = searchParams.get('token');
-    if (urlToken && !isSubmitting) {
-      handleSubmit(urlToken);
+    const stateToken = (location.state as { token?: string })?.token;
+    const token = urlToken || stateToken;
+
+    if (token && !isSubmitting) {
+      handleSubmit(token);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, location.state]);
 
   return (
     <div className="login-page">

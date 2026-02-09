@@ -39,6 +39,8 @@ export function useAutoScroll(deps: unknown[]): UseAutoScrollResult {
   }, [checkNearBottom]);
 
   // On dependency change (new messages), auto-scroll if near bottom
+  // Convert deps array to stable string to avoid infinite loop (React #185)
+  const depsKey = JSON.stringify(deps);
   useEffect(() => {
     if (isNearBottomRef.current) {
       const el = containerRef.current;
@@ -49,7 +51,7 @@ export function useAutoScroll(deps: unknown[]): UseAutoScrollResult {
       setShowNewMessageBadge(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [depsKey]);
 
   return { containerRef, showNewMessageBadge, scrollToBottom };
 }

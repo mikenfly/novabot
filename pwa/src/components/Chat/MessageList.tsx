@@ -8,9 +8,12 @@ interface MessageListProps {
   conversationId: string;
 }
 
+// Shared empty array to avoid creating new references
+const EMPTY_ARRAY: never[] = [];
+
 export default function MessageList({ conversationId }: MessageListProps) {
-  const messages = useMessageStore((s) => s.messages[conversationId] ?? []);
-  const pendingMessages = useMessageStore((s) => s.pendingMessages[conversationId] ?? []);
+  const messages = useMessageStore((s) => s.messages[conversationId] || EMPTY_ARRAY);
+  const pendingMessages = useMessageStore((s) => s.pendingMessages[conversationId] || EMPTY_ARRAY);
   const isLoading = useMessageStore((s) => s.isLoading[conversationId] ?? false);
   const fetchMessages = useMessageStore((s) => s.fetchMessages);
 

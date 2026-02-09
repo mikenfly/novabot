@@ -4,6 +4,7 @@ import MessageInput from './MessageInput';
 import TypingIndicator from './TypingIndicator';
 import EmptyState from '../Common/EmptyState';
 import ChatHeader from './ChatHeader';
+import './ChatArea.css';
 
 export default function ChatArea() {
   const activeId = useConversationStore((s) => s.activeId);
