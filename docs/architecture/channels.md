@@ -16,7 +16,7 @@ Le router principal (`src/index.ts`) charge dynamiquement les channels activés 
 channels:
   pwa:
     enabled: true
-    port: 3000
+    port: 17283
     standalone: true
     tailscale_funnel: true
   whatsapp:
@@ -356,7 +356,7 @@ function broadcastMessage(conversationId: string, message: PWAMessage) {
 ```yaml
 pwa:
   enabled: true
-  port: 3000                  # HTTP server port
+  port: 17283                  # HTTP server port
   standalone: true            # true = in-memory, false = sync with WhatsApp
   tailscale_funnel: true      # Auto-configure Tailscale Funnel
 ```

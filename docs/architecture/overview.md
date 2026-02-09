@@ -221,7 +221,7 @@ La configuration principale se fait via `channels.yaml` :
 channels:
   pwa:
     enabled: true
-    port: 3000
+    port: 17283
     standalone: true
     tailscale_funnel: true
   whatsapp:

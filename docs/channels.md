@@ -40,7 +40,7 @@ Interface web moderne accessible depuis n'importe quel navigateur ou iPhone.
 channels:
   pwa:
     enabled: true              # Activer/désactiver
-    port: 3000                # Port du serveur web
+    port: 17283                # Port du serveur web
     standalone: true          # Mode standalone ou synchronisé
     tailscale_funnel: true    # Exposition HTTPS publique
 ```
@@ -211,7 +211,7 @@ pwa:
   tailscale_funnel: false
 ```
 
-L'app fonctionnera en local uniquement : `http://localhost:3000`
+L'app fonctionnera en local uniquement : `http://localhost:17283`
 
 #### Troubleshooting
 
@@ -341,7 +341,7 @@ channels:
   # Progressive Web App
   pwa:
     enabled: true
-    port: 3000
+    port: 17283
     standalone: true
     tailscale_funnel: true
 
@@ -369,6 +369,14 @@ paths:
   groups_dir: "./groups"
   store_dir: "./store"
 ```
+
+### Notes importantes
+
+**Configuration du port :**
+- Le port défini dans `channels.yaml` (`pwa.port`) est la **source unique de vérité**
+- Ce port est utilisé par le serveur web ET par Tailscale Funnel
+- Pour changer le port, modifiez uniquement cette valeur dans `channels.yaml`
+- Port par défaut : `17283` (choisi pour éviter les conflits avec les ports courants comme 3000)
 
 ### Exemples de configuration
 
@@ -481,7 +489,7 @@ DELETE /api/devices/:token                # Révoquer device
 
 ### WebSocket
 
-**URL** : `ws://localhost:3000/ws?token=<token>`
+**URL** : `ws://localhost:17283/ws?token=<token>`
 
 **Messages** :
 ```json

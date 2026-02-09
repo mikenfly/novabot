@@ -5,7 +5,7 @@ channels:
   # Progressive Web App - Interface web moderne
   pwa:
     enabled: true
-    port: 3000
+    port: 17283
     # Mode standalone : conversations directes avec l'agent (pas de WhatsApp nécessaire)
     standalone: true
     tailscale_funnel: true

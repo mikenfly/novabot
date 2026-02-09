@@ -25,7 +25,7 @@ C'est tout ! NanoClaw démarre avec la configuration par défaut (PWA activée).
 
 **Vous verrez** :
 - ✅ Un QR code pour connexion rapide (si Tailscale disponible)
-- ✅ URL locale : `http://localhost:3000`
+- ✅ URL locale : `http://localhost:17283`
 - ✅ Token d'accès temporaire
 
 **Connexion** :
@@ -168,7 +168,7 @@ npm run dev           # Mode développement (hot reload)
 
 **PWA ne démarre pas** :
 - Vérifiez que `channels.yaml` existe
-- Port 3000 libre ? `lsof -i :3000`
+- Port 3000 libre ? `lsof -i :17283`
 
 **WhatsApp ne se connecte pas** :
 - Relancez `npm run auth`

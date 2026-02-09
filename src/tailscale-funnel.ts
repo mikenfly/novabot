@@ -1,20 +1,17 @@
 import { execSync } from 'child_process';
 import qrcodeTerminal from 'qrcode-terminal';
 import { logger } from './logger.js';
-import { WEB_PORT } from './config.js';
 
 interface TailscaleInfo {
   hostname: string;
   funnelUrl: string;
 }
 
-const FUNNEL_PORT = 10000;
-
 /**
  * Configure Tailscale Funnel automatiquement
  * Retourne l'URL publique ou null si échec
  */
-export async function setupTailscaleFunnel(): Promise<TailscaleInfo | null> {
+export async function setupTailscaleFunnel(port: number): Promise<TailscaleInfo | null> {
   try {
     // Vérifier que Tailscale est actif
     try {
@@ -37,7 +34,7 @@ export async function setupTailscaleFunnel(): Promise<TailscaleInfo | null> {
     try {
       // La nouvelle syntaxe : tailscale funnel --bg <port>
       // Cela configure automatiquement serve + funnel en arrière-plan
-      execSync(`tailscale funnel --bg ${WEB_PORT}`, {
+      execSync(`tailscale funnel --bg ${port}`, {
         stdio: 'pipe',
       });
     } catch (err: any) {

@@ -47,4 +47,4 @@ export const TIMEZONE =
   process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 // Web server port for PWA
-export const WEB_PORT = parseInt(process.env.WEB_PORT || '3000', 10);
+export const WEB_PORT = parseInt(process.env.WEB_PORT || '17283', 10);

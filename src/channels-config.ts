@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { logger } from './logger.js';
+import { WEB_PORT } from './config.js';
 
 export interface ChannelConfig {
   enabled: boolean;
@@ -66,7 +67,7 @@ function getDefaultConfig(): ChannelsConfig {
     channels: {
       pwa: {
         enabled: true,
-        port: 3000,
+        port: WEB_PORT,
         standalone: true,
         tailscale_funnel: true,
       },
