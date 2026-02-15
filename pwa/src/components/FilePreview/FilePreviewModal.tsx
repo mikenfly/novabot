@@ -7,7 +7,7 @@ import './FilePreviewModal.css';
 interface FilePreviewModalProps {
   url: string;
   filename: string;
-  fileType: 'image' | 'video' | 'pdf' | 'code' | 'other';
+  fileType: 'image' | 'video' | 'pdf' | 'code' | 'audio' | 'other';
   onClose: () => void;
 }
 

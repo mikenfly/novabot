@@ -19,9 +19,17 @@ export default function ContextMenu({ conversationId, conversationName, x, y, on
   const [renameValue, setRenameValue] = useState(conversationName);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const showDeleteConfirmRef = useRef(false);
+  showDeleteConfirmRef.current = showDeleteConfirm;
+
   useEffect(() => {
-    const handleClickOutside = () => onClose();
+    const handleClickOutside = () => {
+      // Don't close if the confirm dialog is showing
+      if (showDeleteConfirmRef.current) return;
+      onClose();
+    };
     const handleEscape = (e: KeyboardEvent) => {
+      if (showDeleteConfirmRef.current) return;
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('click', handleClickOutside);

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../services/api';
+import { useAgentStatusStore } from './agentStatusStore';
 import type { Message, PendingMessage } from '../types/conversation';
 import type { MessagesResponse, SendMessageResponse } from '../types/api';
 import type { WsMessageData } from '../types/websocket';
@@ -65,6 +66,9 @@ export const useMessageStore = create<MessageState>((set) => ({
         ],
       },
     }));
+
+    // Show immediate typing indicator while agent starts
+    useAgentStatusStore.getState().handleAgentStatus(conversationId, 'Réflexion...');
 
     try {
       await api.post<SendMessageResponse>(

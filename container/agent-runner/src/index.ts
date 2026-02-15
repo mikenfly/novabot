@@ -57,7 +57,8 @@ function writeOutput(output: ContainerOutput): void {
 
 function emitStatus(text: string): void {
   const payload = JSON.stringify({ status: text, timestamp: new Date().toISOString() });
-  console.log(`${STATUS_PREFIX}${payload}`);
+  // Write directly and flush — console.log buffers when stdout is piped
+  process.stdout.write(`${STATUS_PREFIX}${payload}\n`);
 }
 
 function craftToolStatus(toolName: string, input: Record<string, any>): string {

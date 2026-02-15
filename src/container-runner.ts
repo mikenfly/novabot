@@ -267,7 +267,15 @@ export async function runContainerAgent(
           if (line.startsWith(STATUS_PREFIX)) {
             const statusText = line.slice(STATUS_PREFIX.length).trim();
             if (statusText) {
-              onStatus(statusText);
+              let status: string;
+              try {
+                const parsed = JSON.parse(statusText);
+                status = parsed.status || statusText;
+              } catch {
+                status = statusText;
+              }
+              logger.debug({ status }, 'Agent status received');
+              onStatus(status);
             }
             continue; // Don't add status lines to stdout
           }
