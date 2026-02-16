@@ -107,6 +107,20 @@ export function initDatabase(): void {
   } catch {
     /* column already exists */
   }
+
+  // Add audio_url column to pwa_messages if it doesn't exist
+  try {
+    db.exec(`ALTER TABLE pwa_messages ADD COLUMN audio_url TEXT`);
+  } catch {
+    /* column already exists */
+  }
+
+  // Add audio_segments column (JSON array of {url, title}) to pwa_messages
+  try {
+    db.exec(`ALTER TABLE pwa_messages ADD COLUMN audio_segments TEXT`);
+  } catch {
+    /* column already exists */
+  }
 }
 
 /**
@@ -441,6 +455,8 @@ export interface PWAMessageRow {
   sender: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  audio_url: string | null;
+  audio_segments: string | null;
 }
 
 export interface PushSubscriptionRow {
@@ -503,11 +519,13 @@ export function addPWAMessage(
   conversationId: string,
   sender: 'user' | 'assistant',
   content: string,
+  audioUrl?: string,
+  audioSegments?: Array<{ url: string; title?: string }>,
 ): void {
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO pwa_messages (id, conversation_id, sender, content, timestamp) VALUES (?, ?, ?, ?, ?)`,
-  ).run(id, conversationId, sender, content, now);
+    `INSERT INTO pwa_messages (id, conversation_id, sender, content, timestamp, audio_url, audio_segments) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, conversationId, sender, content, now, audioUrl || null, audioSegments ? JSON.stringify(audioSegments) : null);
   updatePWAConversationActivity(conversationId);
 }
 

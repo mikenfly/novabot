@@ -28,7 +28,11 @@ import {
   savePushSubscription,
   removePushSubscription,
   generatePWAMessageId,
+  addPWAMessage,
 } from './db.js';
+import { transcribeAudio } from './tts-stt.js';
+import crypto from 'crypto';
+import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -197,7 +201,7 @@ export function startWebServer(
     authMiddleware,
     async (req: AuthRequest, res) => {
       const { id } = req.params;
-      let { content } = req.body;
+      let { content, audioMode } = req.body;
 
       if (!content || typeof content !== 'string') {
         return res.status(400).json({ error: 'Content is required' });
@@ -222,58 +226,7 @@ export function startWebServer(
           res.json({ success: true, messageId: userMsgId });
 
           // Run agent in background
-          sendToPWAAgent(
-            id,
-            content,
-            ASSISTANT_NAME,
-            (conversationId, status) => {
-              broadcastToClients({
-                type: 'agent_status',
-                data: {
-                  conversation_id: conversationId,
-                  status,
-                  timestamp: new Date().toISOString(),
-                },
-              });
-            },
-          )
-            .then(({ response, messageId, renamedTo }) => {
-              if (renamedTo) {
-                broadcastToClients({
-                  type: 'conversation_renamed',
-                  data: { jid: id, name: renamedTo },
-                });
-              }
-              broadcastToClients({
-                type: 'message',
-                data: {
-                  chat_jid: id,
-                  sender_name: ASSISTANT_NAME,
-                  content: `${ASSISTANT_NAME}: ${response}`,
-                  timestamp: new Date().toISOString(),
-                },
-              });
-              // Send done status
-              broadcastToClients({
-                type: 'agent_status',
-                data: {
-                  conversation_id: id,
-                  status: 'done',
-                  timestamp: new Date().toISOString(),
-                },
-              });
-            })
-            .catch((err) => {
-              logger.error({ err, conversationId: id }, 'PWA agent error');
-              broadcastToClients({
-                type: 'agent_status',
-                data: {
-                  conversation_id: id,
-                  status: 'error',
-                  timestamp: new Date().toISOString(),
-                },
-              });
-            });
+          runAgentAndBroadcast(id, content, !!audioMode);
 
           return;
         }
@@ -399,6 +352,158 @@ export function startWebServer(
       }
 
       res.sendFile(fullPath);
+    },
+  );
+
+  // --- Helper: run agent and broadcast results (text + audio messages) ---
+  function runAgentAndBroadcast(conversationId: string, content: string, audioMode: boolean, skipUserMessage?: boolean) {
+    sendToPWAAgent(
+      conversationId,
+      content,
+      ASSISTANT_NAME,
+      (convId, status) => {
+        broadcastToClients({
+          type: 'agent_status',
+          data: {
+            conversation_id: convId,
+            status,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      },
+      audioMode,
+      skipUserMessage,
+    )
+      .then(({ response, renamedTo, audioSegments, replyMessages }) => {
+        if (renamedTo) {
+          broadcastToClients({
+            type: 'conversation_renamed',
+            data: { jid: conversationId, name: renamedTo },
+          });
+        }
+        // Broadcast reply messages first (separate bubbles)
+        if (replyMessages) {
+          for (const reply of replyMessages) {
+            broadcastToClients({
+              type: 'message',
+              data: {
+                chat_jid: conversationId,
+                sender_name: ASSISTANT_NAME,
+                content: `${ASSISTANT_NAME}: ${reply.text}`,
+                timestamp: new Date().toISOString(),
+                ...(reply.audioSegments && { audio_segments: reply.audioSegments }),
+              },
+            });
+          }
+        }
+        // Broadcast main message with text + audio segments
+        broadcastToClients({
+          type: 'message',
+          data: {
+            chat_jid: conversationId,
+            sender_name: ASSISTANT_NAME,
+            content: `${ASSISTANT_NAME}: ${response}`,
+            timestamp: new Date().toISOString(),
+            ...(audioSegments && { audio_segments: audioSegments }),
+          },
+        });
+        broadcastToClients({
+          type: 'agent_status',
+          data: {
+            conversation_id: conversationId,
+            status: 'done',
+            timestamp: new Date().toISOString(),
+          },
+        });
+      })
+      .catch((err) => {
+        logger.error({ err, conversationId }, 'PWA agent error');
+        broadcastToClients({
+          type: 'agent_status',
+          data: {
+            conversation_id: conversationId,
+            status: 'error',
+            timestamp: new Date().toISOString(),
+          },
+        });
+      });
+  }
+
+  // --- Audio message upload endpoint ---
+  app.post(
+    '/api/conversations/:id/audio',
+    express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '10mb' }),
+    (req: AuthRequest, res, next) => {
+      // Auth via query param (simpler for FormData/blob uploads) or header
+      const queryToken = req.query.token as string | undefined;
+      if (queryToken && verifyToken(queryToken)) {
+        req.token = queryToken;
+        return next();
+      }
+      return authMiddleware(req, res, next);
+    },
+    async (req: AuthRequest, res) => {
+      const { id } = req.params;
+      const config = loadChannelsConfig();
+
+      if (!config.channels.pwa?.standalone || !id.startsWith('pwa-')) {
+        return res.status(400).json({ error: 'Audio messages only supported for PWA conversations' });
+      }
+
+      const conversation = getPWAConversation(id);
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+
+      if (!req.body || !(req.body instanceof Buffer) || req.body.length === 0) {
+        return res.status(400).json({ error: 'Audio data required' });
+      }
+
+      try {
+        // Save audio to temp file for Whisper
+        const tmpFile = path.join(os.tmpdir(), `nanoclaw-audio-${crypto.randomBytes(6).toString('hex')}.webm`);
+        fs.writeFileSync(tmpFile, req.body);
+
+        // Transcribe with Whisper
+        logger.info({ conversationId: id, size: req.body.length }, 'Transcribing audio message');
+        const transcription = await transcribeAudio(tmpFile);
+        logger.info({ conversationId: id, textLength: transcription.length }, 'Audio transcribed');
+
+        // Save audio permanently to group dir
+        const audioFilename = `user-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.webm`;
+        const groupAudioDir = path.join(GROUPS_DIR, conversation.folder, 'audio');
+        fs.mkdirSync(groupAudioDir, { recursive: true });
+        fs.copyFileSync(tmpFile, path.join(groupAudioDir, audioFilename));
+        fs.unlinkSync(tmpFile);
+
+        const audioUrl = `audio/${audioFilename}`;
+
+        // Create user message with transcription + audio
+        const userMsgId = generatePWAMessageId();
+        addPWAMessage(userMsgId, id, 'user', transcription, audioUrl);
+
+        // Return immediately
+        res.json({ success: true, messageId: userMsgId, transcription, audioUrl });
+
+        // Show user message to other clients
+        broadcastToClients({
+          type: 'message',
+          data: {
+            chat_jid: id,
+            sender_name: 'You',
+            content: transcription,
+            audio_url: audioUrl,
+            timestamp: new Date().toISOString(),
+            is_from_me: true,
+          },
+        });
+
+        // Run agent with audio mode
+        runAgentAndBroadcast(id, transcription, true, true);
+      } catch (err) {
+        logger.error({ err, conversationId: id }, 'Audio message processing failed');
+        res.status(500).json({ error: 'Failed to process audio message' });
+      }
     },
   );
 

@@ -21,6 +21,15 @@
   box-shadow: 0 0 0 3px var(--accent-subtle);
 }
 
+/* Recording mode */
+.message-input-wrapper--recording {
+  background: var(--bg-tertiary);
+  border-color: var(--error);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+  align-items: center;
+  padding: 0.35rem 0.25rem 0.35rem 0.5rem;
+}
+
 .message-input {
   flex: 1;
   padding: 0.5rem 0;
@@ -63,4 +72,133 @@
 .message-input__send:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+/* Mic button — same size/shape as send but different color */
+.message-input__mic {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.message-input__mic:hover {
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+/* Cancel recording button */
+.message-input__cancel {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  transition: all var(--transition-fast);
+}
+
+.message-input__cancel:hover {
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Recording indicator */
+.message-input__recording-indicator {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+}
+
+.message-input__recording-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--error);
+  animation: recording-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.message-input__recording-time {
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+/* Live waveform during recording */
+.message-input__live-waveform {
+  display: flex;
+  align-items: center;
+  gap: 1.5px;
+  height: 28px;
+  flex: 1;
+  min-width: 0;
+}
+
+.message-input__live-bar {
+  flex: 1;
+  min-width: 2px;
+  border-radius: 1px;
+  background: var(--error);
+  opacity: 0.7;
+  transition: height 0.08s ease-out;
+}
+
+/* Pause button */
+.message-input__pause {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.message-input__pause:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Paused state for recording dot */
+.message-input__recording-dot--paused {
+  animation: none !important;
+  opacity: 0.4;
+}
+
+/* Send button in recording mode */
+.message-input__send--stop {
+  background: var(--accent);
+}
+
+/* Focus outline removed for recording wrapper (keyboard nav) */
+.message-input-wrapper--recording:focus {
+  outline: none;
 }

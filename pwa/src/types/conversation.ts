@@ -6,6 +6,11 @@ export interface Conversation {
   type: 'pwa';
 }
 
+export interface AudioSegment {
+  url: string;
+  title?: string;
+}
+
 export interface Message {
   id: string;
   chat_jid: string;
@@ -13,6 +18,8 @@ export interface Message {
   content: string;
   timestamp: string;
   is_from_me: boolean;
+  audio_url?: string;
+  audio_segments?: AudioSegment[];
 }
 
 export interface PendingMessage {
@@ -21,4 +28,5 @@ export interface PendingMessage {
   content: string;
   timestamp: string;
   status: 'sending' | 'failed';
+  audio_url?: string;
 }

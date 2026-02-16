@@ -10,7 +10,8 @@ interface MessageState {
   pendingMessages: Record<string, PendingMessage[]>;
   isLoading: Record<string, boolean>;
   fetchMessages: (conversationId: string, since?: string) => Promise<void>;
-  sendMessage: (conversationId: string, content: string) => Promise<void>;
+  sendMessage: (conversationId: string, content: string, audioMode?: boolean) => Promise<void>;
+  sendAudio: (conversationId: string, blob: Blob) => Promise<void>;
   handleIncomingMessage: (data: WsMessageData) => void;
 }
 
@@ -47,7 +48,7 @@ export const useMessageStore = create<MessageState>((set) => ({
     }
   },
 
-  sendMessage: async (conversationId: string, content: string) => {
+  sendMessage: async (conversationId: string, content: string, audioMode?: boolean) => {
     const tempId = `temp-${Date.now()}`;
     const pending: PendingMessage = {
       tempId,
@@ -73,7 +74,7 @@ export const useMessageStore = create<MessageState>((set) => ({
     try {
       await api.post<SendMessageResponse>(
         `/api/conversations/${conversationId}/messages`,
-        { content },
+        { content, audioMode },
       );
       // Move pending message to confirmed messages
       set((state) => {
@@ -111,6 +112,75 @@ export const useMessageStore = create<MessageState>((set) => ({
     }
   },
 
+  sendAudio: async (conversationId: string, blob: Blob) => {
+    const tempId = `temp-audio-${Date.now()}`;
+    const blobUrl = URL.createObjectURL(blob);
+    const pending: PendingMessage = {
+      tempId,
+      conversationId,
+      content: '',
+      timestamp: new Date().toISOString(),
+      status: 'sending',
+      audio_url: blobUrl,
+    };
+
+    set((state) => ({
+      pendingMessages: {
+        ...state.pendingMessages,
+        [conversationId]: [
+          ...(state.pendingMessages[conversationId] ?? []),
+          pending,
+        ],
+      },
+    }));
+
+    useAgentStatusStore.getState().handleAgentStatus(conversationId, 'Transcription audio...');
+
+    try {
+      const result = await api.uploadBlob<{ success: boolean; messageId: string; transcription: string; audioUrl: string }>(
+        `/api/conversations/${conversationId}/audio`,
+        blob,
+        blob.type || 'audio/webm',
+      );
+      URL.revokeObjectURL(blobUrl);
+      // Move pending to confirmed with the transcription + server audio URL
+      set((state) => {
+        const confirmedMsg: Message = {
+          id: result.messageId || tempId,
+          chat_jid: conversationId,
+          sender_name: 'Vous',
+          content: result.transcription,
+          timestamp: pending.timestamp,
+          is_from_me: true,
+          audio_url: result.audioUrl,
+        };
+        const existing = state.messages[conversationId] ?? [];
+        return {
+          messages: {
+            ...state.messages,
+            [conversationId]: [...existing, confirmedMsg],
+          },
+          pendingMessages: {
+            ...state.pendingMessages,
+            [conversationId]: (state.pendingMessages[conversationId] ?? []).filter(
+              (p) => p.tempId !== tempId,
+            ),
+          },
+        };
+      });
+    } catch {
+      URL.revokeObjectURL(blobUrl);
+      set((state) => ({
+        pendingMessages: {
+          ...state.pendingMessages,
+          [conversationId]: (state.pendingMessages[conversationId] ?? []).map(
+            (p) => (p.tempId === tempId ? { ...p, status: 'failed' as const } : p),
+          ),
+        },
+      }));
+    }
+  },
+
   handleIncomingMessage: (data: WsMessageData) => {
     const isFromMe = data.is_from_me ?? false;
     const message: Message = {
@@ -120,6 +190,8 @@ export const useMessageStore = create<MessageState>((set) => ({
       content: data.content,
       timestamp: data.timestamp,
       is_from_me: isFromMe,
+      audio_url: data.audio_url,
+      audio_segments: data.audio_segments,
     };
 
     set((state) => {

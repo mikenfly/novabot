@@ -62,4 +62,26 @@ export const api = {
       body: body != null ? JSON.stringify(body) : undefined,
     });
   },
+
+  /** Upload raw binary data (e.g. audio blob). Content-Type set by caller. */
+  async uploadBlob<T>(path: string, blob: Blob, contentType: string): Promise<T> {
+    const token = getToken();
+    const headers: Record<string, string> = { 'Content-Type': contentType };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const response = await fetch(path, {
+      method: 'POST',
+      headers,
+      body: blob,
+    });
+
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({
+        error: `HTTP ${response.status}`,
+      }))) as ApiError;
+      throw new ApiRequestError(response.status, body);
+    }
+
+    return response.json() as Promise<T>;
+  },
 };

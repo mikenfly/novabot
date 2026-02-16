@@ -4,6 +4,8 @@ export interface WsMessageData {
   content: string;
   timestamp: string;
   is_from_me?: boolean;
+  audio_url?: string;
+  audio_segments?: Array<{ url: string; title?: string }>;
 }
 
 export interface AgentStatusData {
