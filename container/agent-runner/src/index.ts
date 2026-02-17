@@ -9,8 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import {
   query, HookCallback, PreCompactHookInput,
-  SessionStartHookInput, UserPromptSubmitHookInput,
-  SDKCompactBoundaryMessage
+  SessionStartHookInput, SDKCompactBoundaryMessage
 } from '@anthropic-ai/claude-agent-sdk';
 import { createIpcMcp } from './ipc-mcp.js';
 
@@ -257,9 +256,6 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
 
 const MEMORY_CONTEXT_PATH = '/workspace/global/memory-context.md';
 
-/** Module-level flag: set when compaction is detected, cleared after re-injection */
-let needsContextInjection = false;
-
 function loadMemoryContext(): string | null {
   try {
     if (fs.existsSync(MEMORY_CONTEXT_PATH)) {
@@ -273,7 +269,6 @@ function loadMemoryContext(): string | null {
 
 /**
  * Hook: inject memory context on session startup and after compaction.
- * Covers: new sessions (source: 'startup') and mid-query compaction (source: 'compact').
  */
 function createSessionStartHook(): HookCallback {
   return async (input) => {
@@ -297,20 +292,14 @@ function createSessionStartHook(): HookCallback {
 }
 
 /**
- * Hook: re-inject memory context on the first user message after a cross-query compaction.
- * Only fires when the needsContextInjection flag is set (compaction detected in a previous query).
+ * Hook: re-inject memory context on every user message.
+ * Re-reads the file each time so the agent always has the latest context.
+ * Prompt caching ensures unchanged content is a cache hit (no extra cost).
  */
-function createUserPromptSubmitHook(
-  shouldInject: () => boolean,
-  clearFlag: () => void,
-): HookCallback {
+function createUserPromptSubmitHook(): HookCallback {
   return async () => {
-    if (!shouldInject()) return {};
-
     const context = loadMemoryContext();
     if (context) {
-      log('Re-injecting memory context after compaction (UserPromptSubmit fallback)');
-      clearFlag();
       return {
         hookSpecificOutput: {
           hookEventName: 'UserPromptSubmit' as const,
@@ -318,8 +307,6 @@ function createUserPromptSubmitHook(
         }
       };
     }
-
-    clearFlag();
     return {};
   };
 }
@@ -363,12 +350,7 @@ async function runAgentQuery(
         hooks: {
           PreCompact: [{ hooks: [createPreCompactHook()] }],
           SessionStart: [{ hooks: [createSessionStartHook()] }],
-          UserPromptSubmit: [{ hooks: [
-            createUserPromptSubmitHook(
-              () => needsContextInjection,
-              () => { needsContextInjection = false; },
-            )
-          ] }],
+          UserPromptSubmit: [{ hooks: [createUserPromptSubmitHook()] }],
         }
       }
     })) {
@@ -392,7 +374,6 @@ async function runAgentQuery(
       if (message.type === 'system' && message.subtype === 'compact_boundary') {
         const compact = message as SDKCompactBoundaryMessage;
         log(`Compaction detected (trigger: ${compact.compact_metadata.trigger}, pre_tokens: ${compact.compact_metadata.pre_tokens})`);
-        needsContextInjection = true;
       }
 
       if (message.type === 'assistant' && message.message?.content) {
