@@ -104,6 +104,7 @@ export const useMessageStore = create<MessageState>((set) => ({
         };
       });
     } catch {
+      useAgentStatusStore.getState().clearStatus(conversationId);
       set((state) => ({
         pendingMessages: {
           ...state.pendingMessages,
@@ -174,6 +175,7 @@ export const useMessageStore = create<MessageState>((set) => ({
       });
     } catch {
       URL.revokeObjectURL(blobUrl);
+      useAgentStatusStore.getState().clearStatus(conversationId);
       set((state) => ({
         pendingMessages: {
           ...state.pendingMessages,

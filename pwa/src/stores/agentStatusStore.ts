@@ -4,6 +4,7 @@ interface AgentStatusState {
   status: Record<string, string | null>;
   handleAgentStatus: (conversationId: string, status: string) => void;
   clearStatus: (conversationId: string) => void;
+  clearAllStatuses: () => void;
 }
 
 export const useAgentStatusStore = create<AgentStatusState>((set) => ({
@@ -26,5 +27,9 @@ export const useAgentStatusStore = create<AgentStatusState>((set) => ({
     set((state) => ({
       status: { ...state.status, [conversationId]: null },
     }));
+  },
+
+  clearAllStatuses: () => {
+    set({ status: {} });
   },
 }));

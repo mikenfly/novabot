@@ -97,6 +97,24 @@ function emitStatus(text: string): void {
 }
 
 function craftToolStatus(toolName: string, input: Record<string, any>): string {
+  // MCP tools (prefixed mcp__nanoclaw__)
+  if (toolName.startsWith('mcp__nanoclaw__')) {
+    const mcpTool = toolName.slice('mcp__nanoclaw__'.length);
+    switch (mcpTool) {
+      case 'send_message': return `Envoi d'un message...`;
+      case 'speak': return 'Préparation audio...';
+      case 'reply': return `Envoi d'une réponse...`;
+      case 'diagram': return `Création d'un diagramme...`;
+      case 'schedule_task': return `Planification d'une tâche...`;
+      case 'list_tasks': return 'Liste des tâches...';
+      case 'pause_task': return `Mise en pause d'une tâche...`;
+      case 'resume_task': return `Reprise d'une tâche...`;
+      case 'cancel_task': return `Annulation d'une tâche...`;
+      case 'register_group': return `Enregistrement d'un groupe...`;
+      default: return `Utilisation de ${mcpTool}...`;
+    }
+  }
+
   switch (toolName) {
     case 'Read': return `Lecture de ${input.file_path?.split('/').pop() || 'fichier'}...`;
     case 'Write': return `Écriture de ${input.file_path?.split('/').pop() || 'fichier'}...`;
@@ -107,6 +125,33 @@ function craftToolStatus(toolName: string, input: Record<string, any>): string {
     case 'WebSearch': return `Recherche sur le web...`;
     case 'WebFetch': return `Récupération d'une page web...`;
     default: return `Utilisation de ${toolName}...`;
+  }
+}
+
+function craftToolLabel(toolName: string): string {
+  if (toolName.startsWith('mcp__nanoclaw__')) {
+    const mcpTool = toolName.slice('mcp__nanoclaw__'.length);
+    switch (mcpTool) {
+      case 'send_message': return 'envoi message';
+      case 'speak': return 'audio';
+      case 'reply': return 'réponse';
+      case 'diagram': return 'diagramme';
+      case 'schedule_task': return 'planification';
+      case 'list_tasks': case 'pause_task': case 'resume_task': case 'cancel_task': return 'gestion tâches';
+      case 'register_group': return 'enregistrement groupe';
+      default: return mcpTool;
+    }
+  }
+  switch (toolName) {
+    case 'Read': return 'lecture';
+    case 'Write': return 'écriture';
+    case 'Edit': return 'modification';
+    case 'Bash': return 'commande';
+    case 'Glob': return 'recherche fichiers';
+    case 'Grep': return 'recherche code';
+    case 'WebSearch': return 'recherche web';
+    case 'WebFetch': return 'page web';
+    default: return toolName;
   }
 }
 
@@ -377,10 +422,14 @@ async function runAgentQuery(
       }
 
       if (message.type === 'assistant' && message.message?.content) {
-        for (const block of message.message.content) {
-          if (block.type === 'tool_use') {
-            emitStatus(craftToolStatus(block.name, (block as any).input || {}));
-          }
+        const toolBlocks = message.message.content.filter(
+          (b: { type: string }) => b.type === 'tool_use',
+        );
+        if (toolBlocks.length === 1) {
+          emitStatus(craftToolStatus(toolBlocks[0]!.name, (toolBlocks[0] as any).input || {}));
+        } else if (toolBlocks.length > 1) {
+          const labels = toolBlocks.map((b: { name: string }) => craftToolLabel(b.name));
+          emitStatus(labels.join(' + ') + '...');
         }
       }
 

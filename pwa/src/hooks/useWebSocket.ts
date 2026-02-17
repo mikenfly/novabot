@@ -17,6 +17,7 @@ export function useWebSocket(): void {
       switch (msg.type) {
         case 'connected':
           useUIStore.getState().setConnectionStatus('connected');
+          useAgentStatusStore.getState().clearAllStatuses();
           break;
         case 'pong':
           break;
