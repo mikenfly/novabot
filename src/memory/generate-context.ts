@@ -1,11 +1,67 @@
 import fs from 'fs';
 import path from 'path';
 
-import { GROUPS_DIR } from '../config.js';
+import { GROUPS_DIR, MEMORY_DIR } from '../config.js';
 import { listCategory, getRelations, getAllEntries } from './db.js';
 import type { MemoryEntry } from './types.js';
 
 const CONTEXT_FILE = path.join(GROUPS_DIR, 'global', 'memory-context.md');
+const SETTINGS_FILE = path.join(MEMORY_DIR, 'settings.json');
+
+export interface MemoryLimits {
+  user: number;
+  goals: number;
+  projects: number;
+  people: number;
+  facts: number;
+  preferences: number;
+  timeline_days: number;
+}
+
+const DEFAULT_LIMITS: MemoryLimits = {
+  user: 10,
+  goals: 10,
+  projects: 10,
+  people: 5,
+  facts: 10,
+  preferences: 5,
+  timeline_days: 14,
+};
+
+function loadLimits(): MemoryLimits {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+      return { ...DEFAULT_LIMITS, ...raw.limits };
+    }
+  } catch {
+    // ignore malformed file
+  }
+  return { ...DEFAULT_LIMITS };
+}
+
+export function getLimits(): MemoryLimits {
+  return loadLimits();
+}
+
+export function getMemoryContextContent(): string | null {
+  try {
+    if (fs.existsSync(CONTEXT_FILE)) {
+      return fs.readFileSync(CONTEXT_FILE, 'utf-8');
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export function saveLimits(partial: Partial<MemoryLimits>): MemoryLimits {
+  const current = loadLimits();
+  const merged = { ...current, ...partial };
+  fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ limits: merged }, null, 2), 'utf-8');
+  return merged;
+}
 
 function score(entry: MemoryEntry): number {
   const daysSince =
@@ -23,10 +79,11 @@ function formatEntry(entry: MemoryEntry): string {
 }
 
 export async function generateMemoryContext(): Promise<void> {
+  const limits = loadLimits();
   const lines: string[] = ['# Memory Context', ''];
 
   // User — always fully included
-  const userEntries = listCategory('user', 10);
+  const userEntries = listCategory('user', limits.user);
   if (userEntries.length > 0) {
     lines.push('## User');
     for (const e of userEntries) {
@@ -36,7 +93,7 @@ export async function generateMemoryContext(): Promise<void> {
   }
 
   // Active goals
-  const goals = listCategory('goals', 10);
+  const goals = listCategory('goals', limits.goals);
   if (goals.length > 0) {
     lines.push('## Active Goals');
     for (const e of goals) {
@@ -46,7 +103,7 @@ export async function generateMemoryContext(): Promise<void> {
   }
 
   // Current projects
-  const projects = listCategory('projects', 10);
+  const projects = listCategory('projects', limits.projects);
   if (projects.length > 0) {
     lines.push('## Current Projects');
     for (const e of projects) {
@@ -55,8 +112,8 @@ export async function generateMemoryContext(): Promise<void> {
     lines.push('');
   }
 
-  // People — top 5
-  const people = listCategory('people', 5);
+  // People
+  const people = listCategory('people', limits.people);
   if (people.length > 0) {
     lines.push('## People');
     for (const e of people) {
@@ -65,8 +122,8 @@ export async function generateMemoryContext(): Promise<void> {
     lines.push('');
   }
 
-  // Facts — top 10
-  const facts = listCategory('facts', 10);
+  // Facts
+  const facts = listCategory('facts', limits.facts);
   if (facts.length > 0) {
     lines.push('## Facts');
     for (const e of facts) {
@@ -75,8 +132,8 @@ export async function generateMemoryContext(): Promise<void> {
     lines.push('');
   }
 
-  // Preferences — top 5
-  const preferences = listCategory('preferences', 5);
+  // Preferences
+  const preferences = listCategory('preferences', limits.preferences);
   if (preferences.length > 0) {
     lines.push('## Preferences');
     for (const e of preferences) {
@@ -85,14 +142,14 @@ export async function generateMemoryContext(): Promise<void> {
     lines.push('');
   }
 
-  // Timeline — entries within ±2 weeks
+  // Timeline — entries within ± configured days
   const allTimeline = getAllEntries().filter((e) => e.category === 'timeline' && e.status === 'active');
   const now = Date.now();
-  const twoWeeksMs = 14 * 24 * 60 * 60 * 1000;
+  const rangeMs = limits.timeline_days * 24 * 60 * 60 * 1000;
   const timelineInRange = allTimeline
     .filter((e) => {
       const entryTime = new Date(e.last_mentioned).getTime();
-      return Math.abs(entryTime - now) <= twoWeeksMs;
+      return Math.abs(entryTime - now) <= rangeMs;
     })
     .sort((a, b) => new Date(a.last_mentioned).getTime() - new Date(b.last_mentioned).getTime());
 
