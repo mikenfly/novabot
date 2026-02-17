@@ -255,7 +255,7 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
 
 // ==================== Memory context injection ====================
 
-const MEMORY_CONTEXT_PATH = '/workspace/group/memory-context.md';
+const MEMORY_CONTEXT_PATH = '/workspace/global/memory-context.md';
 
 /** Module-level flag: set when compaction is detected, cleared after re-injection */
 let needsContextInjection = false;

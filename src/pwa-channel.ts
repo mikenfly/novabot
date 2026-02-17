@@ -16,6 +16,7 @@ import {
   PWAMessageRow,
 } from './db.js';
 import { ASSISTANT_NAME, DATA_DIR, GROUPS_DIR } from './config.js';
+import { feedExchange } from './memory/context-agent.js';
 import { RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 import { generateSpeech } from './tts-stt.js';
@@ -463,6 +464,14 @@ Règles :
     const response = output.result || 'Pas de reponse';
     const assistantMsgId = generatePWAMessageId();
     addPWAMessage(assistantMsgId, conversationId, 'assistant', response, undefined, audioSegments);
+
+    feedExchange({
+      channel: 'pwa',
+      conversation_name: conversation.name,
+      user_message: userMessage,
+      assistant_response: response,
+      timestamp: new Date().toISOString(),
+    });
 
     return { response, messageId: assistantMsgId, renamedTo, audioSegments };
   } catch (err) {
