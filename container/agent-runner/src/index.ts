@@ -333,6 +333,9 @@ function createPreToolUseHook(): HookCallback {
 // ==================== Memory context injection ====================
 
 const MEMORY_CONTEXT_PATH = '/workspace/global/memory-context.md';
+// Urgent context is per-conversation to avoid cross-contamination
+// chatJid is set once we know which conversation this container serves
+let currentChatJid: string | null = null;
 
 function loadMemoryContext(): string | null {
   try {
@@ -345,6 +348,39 @@ function loadMemoryContext(): string | null {
   return null;
 }
 
+function loadUrgentContext(): string | null {
+  // Try per-conversation file first, then global fallback
+  const paths = [
+    ...(currentChatJid ? [`/workspace/global/urgent-context-${currentChatJid}.md`] : []),
+    '/workspace/global/urgent-context.md',
+  ];
+
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) {
+        return fs.readFileSync(p, 'utf-8').trim() || null;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
+
+function loadFullContext(): string | null {
+  const parts: string[] = [];
+
+  // Urgent context first (if present)
+  const urgent = loadUrgentContext();
+  if (urgent) parts.push(urgent);
+
+  // Regular memory context
+  const context = loadMemoryContext();
+  if (context) parts.push(context);
+
+  return parts.length > 0 ? parts.join('\n\n---\n\n') : null;
+}
+
 /**
  * Hook: inject memory context on session startup and after compaction.
  */
@@ -353,7 +389,7 @@ function createSessionStartHook(): HookCallback {
     const sessionStart = input as SessionStartHookInput;
 
     if (sessionStart.source === 'startup' || sessionStart.source === 'compact') {
-      const context = loadMemoryContext();
+      const context = loadFullContext();
       if (context) {
         log(`Injecting memory context (source: ${sessionStart.source})`);
         return {
@@ -376,7 +412,7 @@ function createSessionStartHook(): HookCallback {
  */
 function createUserPromptSubmitHook(): HookCallback {
   return async () => {
-    const context = loadMemoryContext();
+    const context = loadFullContext();
     if (context) {
       return {
         hookSpecificOutput: {
@@ -485,6 +521,7 @@ async function runAgentQuery(
 // ==================== One-shot mode ====================
 
 async function runOneShot(input: ContainerInput): Promise<void> {
+  currentChatJid = input.chatJid;
   const ipcMcp = createIpcMcp({
     chatJid: input.chatJid,
     groupFolder: input.groupFolder,
@@ -552,6 +589,7 @@ function readNextInboxMessage(): InboxMessage | null {
 
 async function runSupervisor(bootstrap: BootstrapInput): Promise<void> {
   log(`Supervisor started for group: ${bootstrap.groupFolder}`);
+  currentChatJid = bootstrap.chatJid;
   const agentName = bootstrap.agentName || 'Assistant';
 
   const ipcMcp = createIpcMcp({

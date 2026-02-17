@@ -27,9 +27,10 @@ interface MemoryLimits {
   facts: number;
   preferences: number;
   timeline_days: number;
+  relation_depth: number;
 }
 
-const LIMIT_LABELS: { key: keyof MemoryLimits; label: string }[] = [
+const LIMIT_LABELS: { key: keyof MemoryLimits; label: string; min?: number; max?: number }[] = [
   { key: 'user', label: 'Profil utilisateur' },
   { key: 'goals', label: 'Objectifs' },
   { key: 'projects', label: 'Projets' },
@@ -37,6 +38,7 @@ const LIMIT_LABELS: { key: keyof MemoryLimits; label: string }[] = [
   { key: 'facts', label: 'Faits' },
   { key: 'preferences', label: 'Preferences' },
   { key: 'timeline_days', label: 'Timeline (jours)' },
+  { key: 'relation_depth', label: 'Profondeur des relations', min: 0, max: 5 },
 ];
 
 export default function SettingsPage() {
@@ -176,20 +178,24 @@ export default function SettingsPage() {
             {limitsOpen && (
               limits ? (
                 <>
-                  {LIMIT_LABELS.map(({ key, label }) => (
-                    <div key={key} className="memory-limits__row">
-                      <label>{label}</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={50}
-                        value={limits[key]}
-                        onChange={(e) =>
-                          setLimits({ ...limits, [key]: Math.max(1, parseInt(e.target.value) || 1) })
-                        }
-                      />
-                    </div>
-                  ))}
+                  {LIMIT_LABELS.map(({ key, label, min: minVal, max: maxVal }) => {
+                    const mn = minVal ?? 1;
+                    const mx = maxVal ?? 50;
+                    return (
+                      <div key={key} className="memory-limits__row">
+                        <label>{label}</label>
+                        <input
+                          type="number"
+                          min={mn}
+                          max={mx}
+                          value={limits[key]}
+                          onChange={(e) =>
+                            setLimits({ ...limits, [key]: Math.max(mn, Math.min(mx, parseInt(e.target.value) || mn)) })
+                          }
+                        />
+                      </div>
+                    );
+                  })}
                   <button className="settings-section__btn" onClick={handleSaveLimits}>
                     Enregistrer
                   </button>

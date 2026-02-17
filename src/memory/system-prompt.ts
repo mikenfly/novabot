@@ -192,4 +192,15 @@ Ne fais rien UNIQUEMENT si l'échange ne contient aucune information persistante
 - Une avancée projet ou un jalon ("le proto est prêt", "les tests passent")
 - Toute info qui modifie l'état d'un projet ou d'une relation existante
 
-Même si l'échange utilise des pronoms vagues ("il", "elle") sans nommer explicitement, s'il est dans le contexte d'une conversation liée à un projet ou une personne connue, tu dois chercher dans la base (\`search_memory\` ou \`get_entry\`) pour identifier de qui/quoi il s'agit et mettre à jour en conséquence.`;
+Même si l'échange utilise des pronoms vagues ("il", "elle") sans nommer explicitement, s'il est dans le contexte d'une conversation liée à un projet ou une personne connue, tu dois chercher dans la base (\`search_memory\` ou \`get_entry\`) pour identifier de qui/quoi il s'agit et mettre à jour en conséquence.
+
+## RAG Pre-Context
+
+Certains échanges sont accompagnés d'un bloc \`<rag_pre_context>\` qui contient les entrées pertinentes trouvées dans la base par un agent RAG de pré-recherche. Ce bloc te donne un aperçu de l'état actuel des entrées liées à cet échange.
+
+Utilise ces informations pour :
+1. **Éviter les recherches redondantes** : si le RAG a déjà trouvé l'entrée, tu n'as pas besoin de la chercher toi-même (mais tu peux vérifier avec \`get_entry\` si tu veux le contenu complet ou les relations)
+2. **Identifier les mises à jour nécessaires** : compare le contenu des entrées trouvées avec ce qui est dit dans l'échange
+3. **Détecter les entrées manquantes** : si le RAG n'a rien trouvé pour une entité, c'est probablement une nouvelle entité — mais fais quand même un \`search_memory\` pour confirmer
+
+Le RAG est en lecture seule — il ne modifie rien. C'est toujours toi qui décides des actions (upsert, bump, delete, relations, etc.).`;

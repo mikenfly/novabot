@@ -59,3 +59,10 @@ export const WEB_PORT = parseInt(process.env.WEB_PORT || '17283', 10);
 // Memory system
 export const MEMORY_DIR = path.resolve(PROJECT_ROOT, 'memory');
 export const MEMORY_DB_PATH = path.join(MEMORY_DIR, 'memory.db');
+
+// RAG agent (agentic pre-search before context agent)
+export const RAG_MODEL = process.env.RAG_MODEL || 'claude-sonnet-4-5-20250929';
+export const RAG_ENABLED = process.env.RAG_ENABLED !== 'false'; // true by default
+export const RAG_TIMEOUT = parseInt(process.env.RAG_TIMEOUT || '60000', 10); // 60s
+export const RAG_RECENT_EXCHANGES_BUFFER = 20; // global circular buffer size
+export const RAG_RECENT_EXCHANGES_PER_CONV = 10; // filtered per-conversation for RAG agent

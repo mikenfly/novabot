@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { GROUPS_DIR, MEMORY_DIR } from '../config.js';
-import { listCategory, getRelations, getAllEntries } from './db.js';
+import { listCategory, getRelations, getEntry, getAllEntries } from './db.js';
 import type { MemoryEntry } from './types.js';
 
 const CONTEXT_FILE = path.join(GROUPS_DIR, 'global', 'memory-context.md');
@@ -16,6 +16,7 @@ export interface MemoryLimits {
   facts: number;
   preferences: number;
   timeline_days: number;
+  relation_depth: number;
 }
 
 const DEFAULT_LIMITS: MemoryLimits = {
@@ -26,6 +27,7 @@ const DEFAULT_LIMITS: MemoryLimits = {
   facts: 10,
   preferences: 5,
   timeline_days: 14,
+  relation_depth: 2,
 };
 
 function loadLimits(): MemoryLimits {
@@ -77,6 +79,48 @@ const INVERSE_LABELS: Record<string, string> = {
   depends_on: 'required_by',
 };
 
+/**
+ * Collect related entries recursively up to maxDepth levels.
+ * Returns a map of key → { entry, depth } for all discovered entries.
+ * The initial entry is at depth 0, its direct relations at depth 1, etc.
+ */
+function collectRelatedEntries(
+  rootKey: string,
+  maxDepth: number,
+  alreadyIncluded: Set<string>,
+): Map<string, { entry: MemoryEntry; depth: number }> {
+  const collected = new Map<string, { entry: MemoryEntry; depth: number }>();
+  const queue: { key: string; depth: number }[] = [{ key: rootKey, depth: 0 }];
+
+  while (queue.length > 0) {
+    const { key, depth } = queue.shift()!;
+
+    // Skip if already collected at same or shallower depth, or already in context
+    if (collected.has(key) || (depth > 0 && alreadyIncluded.has(key))) continue;
+    if (depth > maxDepth) continue;
+
+    const entry = getEntry(key);
+    if (!entry || entry.status !== 'active') continue;
+
+    if (depth > 0) {
+      collected.set(key, { entry, depth });
+    }
+
+    // Explore relations if we haven't reached max depth
+    if (depth < maxDepth) {
+      const relations = getRelations(key);
+      for (const r of relations) {
+        const otherKey = r.source_key === key ? r.target_key : r.source_key;
+        if (!collected.has(otherKey) && !alreadyIncluded.has(otherKey)) {
+          queue.push({ key: otherKey, depth: depth + 1 });
+        }
+      }
+    }
+  }
+
+  return collected;
+}
+
 function formatEntry(entry: MemoryEntry): string {
   const relations = getRelations(entry.key);
   const relStr =
@@ -91,69 +135,81 @@ function formatEntry(entry: MemoryEntry): string {
   return `- **${entry.key}** (mentioned ${entry.mention_count}x, last: ${entry.last_mentioned.slice(0, 10)}): ${entry.content}${relStr}`;
 }
 
+function formatRelatedEntry(entry: MemoryEntry, depth: number): string {
+  const indent = '  '.repeat(depth);
+  const relations = getRelations(entry.key);
+  const relStr =
+    relations.length > 0
+      ? ` [${relations.map((r) => {
+          const isSource = r.source_key === entry.key;
+          const otherKey = isSource ? r.target_key : r.source_key;
+          const label = isSource ? r.relation_type : (INVERSE_LABELS[r.relation_type] || r.relation_type);
+          return `${label}: ${otherKey}`;
+        }).join(', ')}]`
+      : '';
+  return `${indent}- *(lié)* **${entry.key}**: ${entry.content}${relStr}`;
+}
+
 export async function generateMemoryContext(): Promise<void> {
   const limits = loadLimits();
   const lines: string[] = ['# Memory Context', ''];
 
-  // User — always fully included
+  // Track all keys already included in context (for relation dedup)
+  const includedKeys = new Set<string>();
+
+  // Helper: format a section's entries + their related entries
+  function addSection(title: string, entries: MemoryEntry[], depth: number) {
+    if (entries.length === 0) return;
+    lines.push(`## ${title}`);
+    for (const e of entries) {
+      includedKeys.add(e.key);
+    }
+    for (const e of entries) {
+      lines.push(formatEntry(e));
+
+      // Resolve related entries up to relation_depth levels
+      if (depth > 0) {
+        const related = collectRelatedEntries(e.key, depth, includedKeys);
+        // Sort by depth, then alphabetically
+        const sorted = [...related.entries()].sort((a, b) =>
+          a[1].depth !== b[1].depth ? a[1].depth - b[1].depth : a[0].localeCompare(b[0])
+        );
+        for (const [, { entry, depth: d }] of sorted) {
+          lines.push(formatRelatedEntry(entry, d));
+          includedKeys.add(entry.key);
+        }
+      }
+    }
+    lines.push('');
+  }
+
+  const depth = limits.relation_depth;
+
+  // User — always fully included (no relations for user profile)
   const userEntries = listCategory('user', limits.user);
   if (userEntries.length > 0) {
     lines.push('## User');
     for (const e of userEntries) {
       lines.push(e.content);
+      includedKeys.add(e.key);
     }
     lines.push('');
   }
 
   // Active goals
-  const goals = listCategory('goals', limits.goals);
-  if (goals.length > 0) {
-    lines.push('## Active Goals');
-    for (const e of goals) {
-      lines.push(formatEntry(e));
-    }
-    lines.push('');
-  }
+  addSection('Active Goals', listCategory('goals', limits.goals), depth);
 
   // Current projects
-  const projects = listCategory('projects', limits.projects);
-  if (projects.length > 0) {
-    lines.push('## Current Projects');
-    for (const e of projects) {
-      lines.push(formatEntry(e));
-    }
-    lines.push('');
-  }
+  addSection('Current Projects', listCategory('projects', limits.projects), depth);
 
   // People
-  const people = listCategory('people', limits.people);
-  if (people.length > 0) {
-    lines.push('## People');
-    for (const e of people) {
-      lines.push(formatEntry(e));
-    }
-    lines.push('');
-  }
+  addSection('People', listCategory('people', limits.people), depth);
 
   // Facts
-  const facts = listCategory('facts', limits.facts);
-  if (facts.length > 0) {
-    lines.push('## Facts');
-    for (const e of facts) {
-      lines.push(formatEntry(e));
-    }
-    lines.push('');
-  }
+  addSection('Facts', listCategory('facts', limits.facts), depth);
 
   // Preferences
-  const preferences = listCategory('preferences', limits.preferences);
-  if (preferences.length > 0) {
-    lines.push('## Preferences');
-    for (const e of preferences) {
-      lines.push(formatEntry(e));
-    }
-    lines.push('');
-  }
+  addSection('Preferences', listCategory('preferences', limits.preferences), depth);
 
   // Timeline — entries within ± configured days
   const allTimeline = getAllEntries().filter((e) => e.category === 'timeline' && e.status === 'active');
@@ -166,13 +222,7 @@ export async function generateMemoryContext(): Promise<void> {
     })
     .sort((a, b) => new Date(a.last_mentioned).getTime() - new Date(b.last_mentioned).getTime());
 
-  if (timelineInRange.length > 0) {
-    lines.push('## Timeline');
-    for (const e of timelineInRange) {
-      lines.push(formatEntry(e));
-    }
-    lines.push('');
-  }
+  addSection('Timeline', timelineInRange, depth);
 
   // Write to file
   const content = lines.join('\n').trim() + '\n';

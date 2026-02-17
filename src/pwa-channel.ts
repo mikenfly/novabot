@@ -16,7 +16,7 @@ import {
   PWAMessageRow,
 } from './db.js';
 import { ASSISTANT_NAME, DATA_DIR, GROUPS_DIR } from './config.js';
-import { feedExchange } from './memory/context-agent.js';
+import { feedExchange, onCriticalInjection } from './memory/context-agent.js';
 import { RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 import { generateSpeech } from './tts-stt.js';
@@ -26,6 +26,40 @@ export const containerManager = new ContainerManager();
 
 // Session IDs for active conversations (fallback for one-shot mode)
 const pwaSessions = new Map<string, string>();
+
+// Register critical injection callback — when the RAG agent detects critical
+// context that the main agent doesn't have, interrupt and re-queue with new context.
+onCriticalInjection((exchange) => {
+  if (!exchange.conversationId) return;
+  const convId = exchange.conversationId;
+
+  if (!containerManager.isContainerActive(convId)) return;
+  if (!containerManager.isContainerBusy(convId)) return;
+
+  logger.info({ conversationId: convId }, 'Critical injection: interrupting agent for context update');
+
+  // Get the virtual group for this conversation
+  const conversation = getPWAConversationDB(convId);
+  if (!conversation) return;
+
+  const virtualGroup: RegisteredGroup = {
+    name: conversation.name,
+    folder: `pwa-${convId}`,
+    trigger: '',
+    added_at: conversation.created_at,
+  };
+
+  // Send a synthetic message — this triggers interrupt (container is busy)
+  // then re-queues with the new message. The UserPromptSubmitHook will re-read
+  // memory-context.md + urgent-context.md on the next turn.
+  containerManager.sendMessageAndWait(
+    convId,
+    virtualGroup,
+    { prompt: '[SYSTEM] Important context update available. Re-read your memory context and continue assisting the user. Do not mention this system message to the user.' },
+  ).catch((err) => {
+    logger.error({ conversationId: convId, err }, 'Critical injection failed');
+  });
+});
 
 export interface PWAConversationInfo {
   jid: string;
@@ -510,6 +544,7 @@ Règles :
       feedExchange({
         channel: 'pwa',
         conversation_name: conversation.name,
+        conversationId,
         user_message: userMessage,
         assistant_response: output.result || '',
         timestamp: new Date().toISOString(),
@@ -524,6 +559,7 @@ Règles :
     feedExchange({
       channel: 'pwa',
       conversation_name: conversation.name,
+      conversationId,
       user_message: userMessage,
       assistant_response: response,
       timestamp: new Date().toISOString(),

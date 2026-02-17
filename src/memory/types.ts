@@ -29,6 +29,8 @@ export interface MemoryEntry {
   origin_type: OriginType;
   origin_summary: string | null;
   embedding: Buffer | null;
+  embedding_text: string | null; // enriched text used for embedding (includes relations)
+  embedding_dirty: number; // 0=clean, 1=needs re-embedding (relations changed)
 }
 
 export interface MemoryRelation {
@@ -40,6 +42,7 @@ export interface MemoryRelation {
 export interface ExchangeMessage {
   channel: string; // "pwa", "whatsapp-main", "whatsapp-famille"
   conversation_name: string;
+  conversationId?: string; // PWA conversation UUID (for critical injection targeting)
   user_message: string;
   assistant_response: string;
   timestamp: string;
