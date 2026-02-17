@@ -420,9 +420,19 @@ export function startWebServer(
             data: { jid: conversationId, name: renamedTo },
           });
         }
-        // Interrupted queries return empty response — don't broadcast anything,
-        // the next queued message will produce the real response.
-        if (!response) return;
+        // Empty response = interrupted or already sent via reply IPC.
+        // Always send 'done' status so the typing indicator clears.
+        if (!response) {
+          broadcastToClients({
+            type: 'agent_status',
+            data: {
+              conversation_id: conversationId,
+              status: 'done',
+              timestamp: new Date().toISOString(),
+            },
+          });
+          return;
+        }
 
         // Broadcast main (final) message with text + speak audio segments
         broadcastToClients({

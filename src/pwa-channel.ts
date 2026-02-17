@@ -399,8 +399,14 @@ Règles :
   writeGroupsSnapshot(virtualGroup.folder, false, [], new Set());
 
   // Start real-time reply watcher if callback provided
-  const watcher = onRealtimeReply
-    ? startRealtimeIpcWatcher(conversationId, virtualGroup.folder, onRealtimeReply)
+  // Track reply count to avoid duplicating the main output.result when
+  // the agent already sent its answer via the reply tool.
+  let replyCount = 0;
+  const trackingReplyCallback = onRealtimeReply
+    ? (reply: ReplyMessage) => { replyCount++; onRealtimeReply(reply); }
+    : undefined;
+  const watcher = trackingReplyCallback
+    ? startRealtimeIpcWatcher(conversationId, virtualGroup.folder, trackingReplyCallback)
     : null;
 
   try {
@@ -450,6 +456,7 @@ Règles :
     try {
       const replies = await processReplyIpc(conversationId, virtualGroup.folder);
       if (replies.length > 0) {
+        replyCount += replies.length;
         for (const reply of replies) {
           const replyMsgId = generatePWAMessageId();
           addPWAMessage(replyMsgId, conversationId, 'assistant', reply.text, undefined, reply.audioSegments);
@@ -459,6 +466,22 @@ Règles :
       }
     } catch (err) {
       logger.error({ conversationId, err }, 'Failed to process reply IPC');
+    }
+
+    // If the agent already sent replies via the reply tool, skip the main
+    // output.result — it's typically a meta-comment ("I sent you a message")
+    // that would appear as a duplicate response.
+    if (replyCount > 0) {
+      logger.info({ conversationId, replyCount }, 'Replies sent via IPC, skipping main output.result');
+      // Still feed memory with the actual reply content
+      feedExchange({
+        channel: 'pwa',
+        conversation_name: conversation.name,
+        user_message: userMessage,
+        assistant_response: output.result || '',
+        timestamp: new Date().toISOString(),
+      });
+      return { response: '', messageId: '', renamedTo, audioSegments };
     }
 
     const response = output.result || 'Pas de reponse';
