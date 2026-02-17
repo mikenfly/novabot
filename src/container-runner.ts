@@ -140,6 +140,19 @@ function buildVolumeMounts(
     readonly: false,
   });
 
+  // Dev hot reload: mount agent-runner dist/ for live code updates.
+  // When the local compiled dist exists, it overrides the code baked into the image.
+  // Combined with `npm run dev:agent` (tsc --watch), new containers get
+  // the latest code without needing to rebuild the image.
+  const agentDistDir = path.join(projectRoot, 'container', 'agent-runner', 'dist');
+  if (fs.existsSync(agentDistDir)) {
+    mounts.push({
+      hostPath: agentDistDir,
+      containerPath: '/app/dist',
+      readonly: true,
+    });
+  }
+
   // Environment file directory (workaround for Apple Container -i env var bug)
   // Only expose specific auth variables needed by Claude Code, not the entire .env
   const envDir = path.join(DATA_DIR, 'env');

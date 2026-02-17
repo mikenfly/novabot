@@ -14,7 +14,8 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "build:pwa": "cd pwa && npm run build",
     "dev:pwa": "cd pwa && npm run dev",
-    "dev:all": "npm run dev & npm run dev:pwa"
+    "dev:agent": "cd container/agent-runner && npm run dev",
+    "dev:all": "npm run dev & npm run dev:pwa & npm run dev:agent"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.2.29",

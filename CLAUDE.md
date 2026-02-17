@@ -52,19 +52,43 @@ On peut orchestrer des builds complexes avec une équipe d'agents Claude Code co
 
 Run commands directly—don't tell the user to run them.
 
+### Architecture du hot reload
+
+Le développement implique **3 couches** avec chacune son mécanisme de hot reload :
+
+| Couche | Commande | Mécanisme | Effet |
+|--------|----------|-----------|-------|
+| Backend (`src/`) | `npm run dev` | tsx watch | Redémarre le process Node.js à chaque changement |
+| Frontend (`pwa/src/`) | `npm run dev:pwa` | Vite HMR | Mise à jour instantanée dans le navigateur |
+| Agent container (`container/agent-runner/`) | `npm run dev:agent` | tsc --watch + volume mount | Nouveaux containers utilisent le code à jour |
+
+`npm run dev:all` lance les 3 en parallèle.
+
+**Comment ça marche pour les containers :**
+- `tsc --watch` compile `container/agent-runner/src/` → `container/agent-runner/dist/`
+- Ce `dist/` est monté comme volume dans chaque container Docker, écrasant le code baked dans l'image
+- Les **nouveaux containers** (nouvelle conversation ou après idle timeout de 5 min) chargent le code à jour
+- Les **containers déjà en cours** gardent l'ancien code en mémoire jusqu'à leur redémarrage
+- Pour forcer : `docker ps --format '{{.Names}}' | grep nanoclaw-pwa | xargs -r docker rm -f`
+
+**`./container/build.sh` n'est nécessaire que pour :**
+- Changements de dépendances (`container/agent-runner/package.json`)
+- Changements système (Dockerfile, Chromium, outils CLI)
+
 ```bash
-# Dev (backend + frontend hot reload)
-npm run dev:all      # Lance backend + Vite ensemble
-npm run dev          # Backend seul (tsx watch hot reload)
-npm run dev:pwa      # Frontend seul (Vite hot reload, HTTPS)
+# Dev (3 couches en hot reload)
+npm run dev:all      # Backend + Frontend + Agent container (recommandé)
+npm run dev          # Backend seul (tsx watch)
+npm run dev:pwa      # Frontend seul (Vite HMR, HTTPS)
+npm run dev:agent    # Agent container seul (tsc --watch)
 
 # Les ports sont configurés dans .env (WEB_PORT) et pwa/vite.config.ts
 # Vite proxy /api et /ws vers le backend automatiquement
 
-# Build
+# Build (production)
 npm run build        # Compile TypeScript backend
 npm run build:pwa    # Build frontend (pwa/dist/)
-./container/build.sh # Rebuild agent container image
+./container/build.sh # Rebuild agent container image (dépendances/système uniquement)
 ```
 
 ### Authentication en dev
@@ -77,12 +101,13 @@ https://localhost:<vite-port>/?token=$DEV_TOKEN
 
 ### IMPORTANT : Ne pas relancer le serveur
 
-**Le serveur tourne déjà en arrière-plan via `npm run dev:all`.** Le backend a le hot reload (`tsx watch`) et le frontend aussi (Vite HMR). Quand tu modifies du code, les changements sont appliqués automatiquement.
+**Le serveur tourne déjà en arrière-plan via `npm run dev:all`.** Les 3 couches ont le hot reload. Quand tu modifies du code, les changements sont appliqués automatiquement.
 
 **NE JAMAIS faire :**
 - `npm run dev` / `npm run dev:all` / `npm start` → le serveur tourne déjà
 - `npx tsx src/index.ts` → crée un conflit de port
 - Tuer/relancer le process pour "tester" → le hot reload suffit
+- `./container/build.sh` pour des changements de code → le volume mount suffit
 
 **Si tu dois vérifier que le serveur tourne :**
 ```bash

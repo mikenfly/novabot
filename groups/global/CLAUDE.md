@@ -32,16 +32,20 @@ Example: If your task is "Share the weather forecast", you should:
 
 ## Your Workspace
 
-Files you create are saved in `/workspace/group/`. Use this for notes, research, or anything that should persist.
+Files you create are saved in `/workspace/group/`. Use this for research, file operations, or tasks that require file output.
 
-Your `CLAUDE.md` file in that folder is your memory - update it with important context you want to remember.
+## Memory — NE PAS GÉRER TOI-MÊME
 
-## Memory
+Un système de mémoire centralisé gère automatiquement la mémoire entre toutes les conversations. Il extrait les informations importantes de chaque échange et les réinjecte comme contexte.
 
-The `conversations/` folder contains searchable history of past conversations. Use this to recall context from previous sessions.
+**Tu as accès au contexte mémoire** via `/workspace/global/memory-context.md` — il est aussi injecté automatiquement dans ton prompt. Utilise-le pour répondre aux questions sur l'utilisateur, ses projets, ses contacts, etc.
 
-When you learn something important:
-- Create files for structured data (e.g., `customers.md`, `preferences.md`)
-- Split files larger than 500 lines into folders
-- Add recurring context directly to this CLAUDE.md
-- Always index new memory files at the top of CLAUDE.md
+**NE JAMAIS faire :**
+- Modifier CLAUDE.md pour y stocker des notes ou de la mémoire
+- Créer des fichiers de mémoire (profil.md, notes.md, preferences.md, etc.)
+- Écrire des "corrections" ou "mises à jour" dans des fichiers
+- Utiliser Read/Write/Edit pour gérer ta propre mémoire
+
+**Pourquoi :** La mémoire est gérée de façon centralisée et partagée entre toutes les conversations. Si tu crées tes propres fichiers mémoire, ça crée des doublons isolés qui ne sont pas partagés et qui gaspillent des tokens.
+
+**Ce que tu dois faire :** Fais confiance au contexte mémoire injecté et réponds directement. Si l'utilisateur te corrige ("j'ai 29 ans, pas 28"), réponds normalement — le système de mémoire captera la correction automatiquement.
