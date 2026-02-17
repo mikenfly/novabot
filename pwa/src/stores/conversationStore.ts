@@ -36,10 +36,16 @@ export const useConversationStore = create<ConversationState>((set) => ({
 
   createConversation: async (name?: string) => {
     const conv = await api.post<Conversation>('/api/conversations', name ? { name } : {});
-    set((state) => ({
-      conversations: [conv, ...state.conversations],
-      activeId: conv.jid,
-    }));
+    set((state) => {
+      // Dedup: the WebSocket broadcast may have already added this conversation
+      if (state.conversations.some((c) => c.jid === conv.jid)) {
+        return { activeId: conv.jid };
+      }
+      return {
+        conversations: [conv, ...state.conversations],
+        activeId: conv.jid,
+      };
+    });
     return conv.jid;
   },
 
