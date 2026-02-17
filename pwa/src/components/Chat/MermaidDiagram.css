@@ -1,0 +1,39 @@
+.mermaid-diagram {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-loading {
+  color: var(--text-tertiary);
+  padding: 12px;
+  font-style: italic;
+}
+
+.mermaid-error {
+  background: var(--bg-secondary);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin: 8px 0;
+}
+
+.mermaid-error__label {
+  color: var(--error);
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.mermaid-error__code {
+  margin-top: 8px;
+  font-size: 0.85em;
+  color: var(--text-secondary);
+  overflow-x: auto;
+}

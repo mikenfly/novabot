@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { getToken } from '../../services/auth';
 import FilePreviewModal from '../FilePreview/FilePreviewModal';
+import MermaidDiagram from './MermaidDiagram';
 import './MessageContent.css';
 
 interface MessageContentProps {
@@ -131,6 +132,23 @@ export default function MessageContent({ content, conversationId }: MessageConte
               <table className="mc-table">{children}</table>
             </div>
           ),
+          code: ({ className, children }) => {
+            const match = /language-(\w+)/.exec(className || '');
+            const lang = match?.[1];
+
+            if (lang === 'mermaid') {
+              const code = String(children).replace(/\n$/, '');
+              return <MermaidDiagram code={code} />;
+            }
+
+            // Fenced code block
+            if (className) {
+              return <pre><code className={className}>{children}</code></pre>;
+            }
+
+            // Inline code
+            return <code>{children}</code>;
+          },
         }}
       >
         {content}

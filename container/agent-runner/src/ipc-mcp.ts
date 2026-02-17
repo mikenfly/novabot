@@ -353,6 +353,49 @@ Guidelines:
       ),
 
       tool(
+        'diagram',
+        `Create a Mermaid diagram. The diagram will appear as a separate message bubble.
+Use this to visualize architecture, flows, sequences, relationships, etc.
+
+Supported diagram types: flowchart, sequence, class, state, ER, gantt, pie, mindmap, timeline, etc.
+Write standard Mermaid syntax. The diagram will be rendered visually for the user.
+
+Guidelines:
+- Use for any visual representation that aids understanding
+- Keep diagrams focused and readable
+- Add descriptive labels to nodes and edges
+- Use the title parameter for a caption above the diagram`,
+        {
+          code: z.string().describe('Mermaid diagram source code (e.g., "graph LR\\n  A-->B")'),
+          title: z.string().optional().describe('Caption displayed above the diagram')
+        },
+        async (args) => {
+          const text = args.title
+            ? `**${args.title}**\n\n\`\`\`mermaid\n${args.code}\n\`\`\``
+            : `\`\`\`mermaid\n${args.code}\n\`\`\``;
+
+          const data = {
+            type: 'reply',
+            text,
+            audio_text: null,
+            audio_title: null,
+            chatJid,
+            groupFolder,
+            timestamp: new Date().toISOString()
+          };
+
+          const filename = writeIpcFile(MESSAGES_DIR, data);
+
+          return {
+            content: [{
+              type: 'text',
+              text: `Diagram created${args.title ? `: ${args.title}` : ''} (${filename})`
+            }]
+          };
+        }
+      ),
+
+      tool(
         'register_group',
         `Register a new WhatsApp group so the agent can respond to messages there. Main group only.
 
