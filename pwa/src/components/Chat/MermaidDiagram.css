@@ -1,14 +1,12 @@
 .mermaid-diagram {
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
-  padding: 16px;
   overflow-x: auto;
-  margin: 8px 0;
+  margin: 4px 0;
 }
 
 .mermaid-diagram svg {
   max-width: 100%;
   height: auto;
+  display: block;
 }
 
 .mermaid-loading {
