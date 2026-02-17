@@ -13,6 +13,7 @@ import {
   revokeToken,
 } from './auth.js';
 import { ASSISTANT_NAME, GROUPS_DIR } from './config.js';
+import { getLimits, saveLimits, getMemoryContextContent } from './memory/generate-context.js';
 import { logger } from './logger.js';
 import { loadChannelsConfig } from './channels-config.js';
 import {
@@ -533,6 +534,25 @@ export function startWebServer(
       }
     },
   );
+
+  // Memory settings endpoints
+  app.get('/api/memory/settings', authMiddleware, (_req, res) => {
+    res.json({ limits: getLimits() });
+  });
+
+  app.get('/api/memory/context', authMiddleware, (_req, res) => {
+    const content = getMemoryContextContent();
+    res.json({ content: content || '' });
+  });
+
+  app.put('/api/memory/settings', authMiddleware, (req, res) => {
+    const { limits } = req.body;
+    if (!limits || typeof limits !== 'object') {
+      return res.status(400).json({ error: 'limits object required' });
+    }
+    const merged = saveLimits(limits);
+    res.json({ ok: true, limits: merged });
+  });
 
   // Device management endpoints
   app.get('/api/devices', authMiddleware, (_req, res) => {

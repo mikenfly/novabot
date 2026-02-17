@@ -55,3 +55,7 @@ export const TIMEZONE =
 
 // Web server port for PWA
 export const WEB_PORT = parseInt(process.env.WEB_PORT || '17283', 10);
+
+// Memory system
+export const MEMORY_DIR = path.resolve(PROJECT_ROOT, 'memory');
+export const MEMORY_DB_PATH = path.join(MEMORY_DIR, 'memory.db');

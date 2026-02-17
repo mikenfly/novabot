@@ -19,12 +19,38 @@ function formatRelativeTime(iso: string): string {
   return `il y a ${days}j`;
 }
 
+interface MemoryLimits {
+  user: number;
+  goals: number;
+  projects: number;
+  people: number;
+  facts: number;
+  preferences: number;
+  timeline_days: number;
+}
+
+const LIMIT_LABELS: { key: keyof MemoryLimits; label: string }[] = [
+  { key: 'user', label: 'Profil utilisateur' },
+  { key: 'goals', label: 'Objectifs' },
+  { key: 'projects', label: 'Projets' },
+  { key: 'people', label: 'Personnes' },
+  { key: 'facts', label: 'Faits' },
+  { key: 'preferences', label: 'Preferences' },
+  { key: 'timeline_days', label: 'Timeline (jours)' },
+];
+
 export default function SettingsPage() {
   const logout = useAuthStore((s) => s.logout);
   const [devices, setDevices] = useState<Device[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null);
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const [devOpen, setDevOpen] = useState(false);
+  const [limitsOpen, setLimitsOpen] = useState(false);
+  const [limits, setLimits] = useState<MemoryLimits | null>(null);
+  const [limitsSaved, setLimitsSaved] = useState(false);
+  const [contextContent, setContextContent] = useState<string | null>(null);
+  const [contextOpen, setContextOpen] = useState(false);
 
   const fetchDevices = useCallback(async () => {
     setIsLoading(true);
@@ -52,6 +78,33 @@ export default function SettingsPage() {
       deviceName: 'Generated from settings',
     });
     setGeneratedToken(token);
+  }, []);
+
+  const handleToggleDev = useCallback(() => {
+    setDevOpen((v) => !v);
+  }, []);
+
+  const handleToggleLimits = useCallback(async () => {
+    const opening = !limitsOpen;
+    setLimitsOpen(opening);
+    if (opening && !limits) {
+      const { limits: l } = await api.get<{ limits: MemoryLimits }>('/api/memory/settings');
+      setLimits(l);
+    }
+  }, [limitsOpen, limits]);
+
+  const handleSaveLimits = useCallback(async () => {
+    if (!limits) return;
+    const { limits: saved } = await api.put<{ ok: boolean; limits: MemoryLimits }>('/api/memory/settings', { limits });
+    setLimits(saved);
+    setLimitsSaved(true);
+    setTimeout(() => setLimitsSaved(false), 2000);
+  }, [limits]);
+
+  const handleViewContext = useCallback(async () => {
+    setContextOpen(true);
+    const { content } = await api.get<{ content: string }>('/api/memory/context');
+    setContextContent(content);
   }, []);
 
   return (
@@ -102,6 +155,73 @@ export default function SettingsPage() {
           Se deconnecter
         </button>
       </section>
+
+      <section className="settings-section">
+        <button className="settings-section__toggle" onClick={handleToggleDev}>
+          {devOpen ? '▾' : '▸'} Developpeur
+        </button>
+        {devOpen && (
+          <div className="memory-limits">
+            <p className="memory-limits__desc">
+              Le systeme de memoire extrait automatiquement des informations de tes conversations
+              (profil, objectifs, projets, contacts...) et les reinjecte comme contexte dans chaque echange.
+              Tu peux ajuster combien d'entrees par categorie sont injectees.
+            </p>
+            <button className="settings-section__btn" onClick={handleViewContext}>
+              Voir le contexte injecte
+            </button>
+            <button className="memory-limits__subtitle" onClick={handleToggleLimits}>
+              {limitsOpen ? '▾' : '▸'} Limites d'injection par categorie
+            </button>
+            {limitsOpen && (
+              limits ? (
+                <>
+                  {LIMIT_LABELS.map(({ key, label }) => (
+                    <div key={key} className="memory-limits__row">
+                      <label>{label}</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={limits[key]}
+                        onChange={(e) =>
+                          setLimits({ ...limits, [key]: Math.max(1, parseInt(e.target.value) || 1) })
+                        }
+                      />
+                    </div>
+                  ))}
+                  <button className="settings-section__btn" onClick={handleSaveLimits}>
+                    Enregistrer
+                  </button>
+                  {limitsSaved && <p className="memory-limits__saved">Enregistre</p>}
+                </>
+              ) : (
+                <div className="settings-section__loading"><Spinner /></div>
+              )
+            )}
+          </div>
+        )}
+      </section>
+
+      {contextOpen && (
+        <div className="context-viewer" onClick={() => { setContextOpen(false); setContextContent(null); }}>
+          <div className="context-viewer__panel" onClick={(e) => e.stopPropagation()}>
+            <div className="context-viewer__header">
+              <h2>Contexte memoire injecte</h2>
+              <button className="context-viewer__close" onClick={() => { setContextOpen(false); setContextContent(null); }}>
+                &#10005;
+              </button>
+            </div>
+            <div className="context-viewer__body">
+              {contextContent !== null ? (
+                <pre>{contextContent || '(aucun contexte genere pour le moment)'}</pre>
+              ) : (
+                <div className="settings-section__loading"><Spinner /></div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {revokeTarget && (
         <ConfirmDialog

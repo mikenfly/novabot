@@ -43,6 +43,7 @@ import {
   storeMessage,
   updateChatName,
 } from './db.js';
+import { initContextAgent, feedExchange, shutdownContextAgent } from './memory/context-agent.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { NewMessage, RegisteredGroup, Session } from './types.js';
 import { loadJson, saveJson } from './utils.js';
@@ -226,6 +227,14 @@ async function processMessage(msg: NewMessage): Promise<void> {
   if (response) {
     lastAgentTimestamp[msg.chat_jid] = msg.timestamp;
     await sendMessage(msg.chat_jid, `${ASSISTANT_NAME}: ${response}`);
+
+    feedExchange({
+      channel: `whatsapp-${group.folder}`,
+      conversation_name: group.name,
+      user_message: content,
+      assistant_response: response,
+      timestamp: new Date().toISOString(),
+    });
   }
 }
 
@@ -913,6 +922,8 @@ async function main(): Promise<void> {
   cleanupStaleContainers();
   initDatabase();
   logger.info('Database initialized');
+  await initContextAgent();
+  logger.info('Context agent initialized');
   loadState();
   console.log('✓ État chargé');
 
@@ -996,12 +1007,13 @@ async function main(): Promise<void> {
 
 // Graceful shutdown: stop all persistent containers
 async function gracefulShutdown(signal: string) {
-  logger.info({ signal }, 'Received shutdown signal, stopping containers...');
+  logger.info({ signal }, 'Received shutdown signal, stopping...');
   try {
+    await shutdownContextAgent();
     await containerManager.shutdownAll();
-    logger.info('All containers stopped');
+    logger.info('All services stopped');
   } catch (err) {
-    logger.error({ err }, 'Error during container shutdown');
+    logger.error({ err }, 'Error during shutdown');
   }
   process.exit(0);
 }

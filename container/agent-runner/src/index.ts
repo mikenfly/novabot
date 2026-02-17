@@ -7,7 +7,10 @@
 
 import fs from 'fs';
 import path from 'path';
-import { query, HookCallback, PreCompactHookInput } from '@anthropic-ai/claude-agent-sdk';
+import {
+  query, HookCallback, PreCompactHookInput,
+  SessionStartHookInput, SDKCompactBoundaryMessage
+} from '@anthropic-ai/claude-agent-sdk';
 import { createIpcMcp } from './ipc-mcp.js';
 
 // One-shot mode input (has prompt)
@@ -249,6 +252,65 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
   return lines.join('\n');
 }
 
+// ==================== Memory context injection ====================
+
+const MEMORY_CONTEXT_PATH = '/workspace/global/memory-context.md';
+
+function loadMemoryContext(): string | null {
+  try {
+    if (fs.existsSync(MEMORY_CONTEXT_PATH)) {
+      return fs.readFileSync(MEMORY_CONTEXT_PATH, 'utf-8').trim() || null;
+    }
+  } catch (err) {
+    log(`Failed to load memory context: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return null;
+}
+
+/**
+ * Hook: inject memory context on session startup and after compaction.
+ */
+function createSessionStartHook(): HookCallback {
+  return async (input) => {
+    const sessionStart = input as SessionStartHookInput;
+
+    if (sessionStart.source === 'startup' || sessionStart.source === 'compact') {
+      const context = loadMemoryContext();
+      if (context) {
+        log(`Injecting memory context (source: ${sessionStart.source})`);
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'SessionStart' as const,
+            additionalContext: context,
+          }
+        };
+      }
+    }
+
+    return {};
+  };
+}
+
+/**
+ * Hook: re-inject memory context on every user message.
+ * Re-reads the file each time so the agent always has the latest context.
+ * Prompt caching ensures unchanged content is a cache hit (no extra cost).
+ */
+function createUserPromptSubmitHook(): HookCallback {
+  return async () => {
+    const context = loadMemoryContext();
+    if (context) {
+      return {
+        hookSpecificOutput: {
+          hookEventName: 'UserPromptSubmit' as const,
+          additionalContext: context,
+        }
+      };
+    }
+    return {};
+  };
+}
+
 // ==================== Shared query execution ====================
 
 /**
@@ -286,7 +348,9 @@ async function runAgentQuery(
           nanoclaw: ipcMcp
         },
         hooks: {
-          PreCompact: [{ hooks: [createPreCompactHook()] }]
+          PreCompact: [{ hooks: [createPreCompactHook()] }],
+          SessionStart: [{ hooks: [createSessionStartHook()] }],
+          UserPromptSubmit: [{ hooks: [createUserPromptSubmitHook()] }],
         }
       }
     })) {
@@ -301,6 +365,15 @@ async function runAgentQuery(
       if (message.type === 'system' && message.subtype === 'init') {
         newSessionId = message.session_id;
         log(`Session initialized: ${newSessionId}`);
+        if (message.betas?.length) {
+          log(`Active betas: ${message.betas.join(', ')}`);
+        }
+      }
+
+      // Detect compaction to re-inject context on next query
+      if (message.type === 'system' && message.subtype === 'compact_boundary') {
+        const compact = message as SDKCompactBoundaryMessage;
+        log(`Compaction detected (trigger: ${compact.compact_metadata.trigger}, pre_tokens: ${compact.compact_metadata.pre_tokens})`);
       }
 
       if (message.type === 'assistant' && message.message?.content) {
