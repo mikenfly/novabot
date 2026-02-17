@@ -8,10 +8,11 @@
 import fs from 'fs';
 import path from 'path';
 import {
-  query, HookCallback, PreCompactHookInput,
+  query, HookCallback, PreCompactHookInput, PreToolUseHookInput,
   SessionStartHookInput, SDKCompactBoundaryMessage
 } from '@anthropic-ai/claude-agent-sdk';
 import { createIpcMcp } from './ipc-mcp.js';
+import { getAgentSystemPrompt } from './system-prompt.js';
 
 // One-shot mode input (has prompt)
 interface ContainerInput {
@@ -21,6 +22,7 @@ interface ContainerInput {
   chatJid: string;
   isMain: boolean;
   isScheduledTask?: boolean;
+  agentName?: string;
 }
 
 // Supervisor mode bootstrap (no prompt)
@@ -28,6 +30,7 @@ interface BootstrapInput {
   groupFolder: string;
   chatJid: string;
   isMain: boolean;
+  agentName?: string;
 }
 
 interface ContainerOutput {
@@ -252,6 +255,36 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
   return lines.join('\n');
 }
 
+// ==================== File protection ====================
+
+/**
+ * Prevent the agent from modifying CLAUDE.md.
+ * With settingSources: [], the SDK no longer auto-loads it, but it may still
+ * exist in the workspace from previous runs. Block writes as a safety net.
+ * Note: /workspace/global/ is already protected by a read-only mount.
+ */
+function createPreToolUseHook(): HookCallback {
+  return async (input) => {
+    const hookInput = input as PreToolUseHookInput;
+    const toolInput = hookInput.tool_input as Record<string, any> | undefined;
+
+    if ((hookInput.tool_name === 'Write' || hookInput.tool_name === 'Edit') && toolInput?.file_path) {
+      if (path.basename(toolInput.file_path) === 'CLAUDE.md') {
+        log(`Blocked ${hookInput.tool_name} on CLAUDE.md`);
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse' as const,
+            permissionDecision: 'deny' as const,
+            permissionDecisionReason: 'CLAUDE.md is a system-managed file and cannot be modified.',
+          },
+        };
+      }
+    }
+
+    return {};
+  };
+}
+
 // ==================== Memory context injection ====================
 
 const MEMORY_CONTEXT_PATH = '/workspace/global/memory-context.md';
@@ -321,6 +354,7 @@ async function runAgentQuery(
   prompt: string,
   sessionId: string | undefined,
   ipcMcp: ReturnType<typeof createIpcMcp>,
+  agentName: string,
   checkInterrupt?: () => boolean,
 ): Promise<{ status: 'success' | 'error' | 'interrupted'; result: string | null; newSessionId?: string; error?: string }> {
   let result: string | null = null;
@@ -341,13 +375,15 @@ async function runAgentQuery(
           'WebSearch', 'WebFetch',
           'mcp__nanoclaw__*'
         ],
+        systemPrompt: getAgentSystemPrompt(agentName),
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
-        settingSources: ['project'],
+        settingSources: [],
         mcpServers: {
           nanoclaw: ipcMcp
         },
         hooks: {
+          PreToolUse: [{ hooks: [createPreToolUseHook()] }],
           PreCompact: [{ hooks: [createPreCompactHook()] }],
           SessionStart: [{ hooks: [createSessionStartHook()] }],
           UserPromptSubmit: [{ hooks: [createUserPromptSubmitHook()] }],
@@ -412,7 +448,7 @@ async function runOneShot(input: ContainerInput): Promise<void> {
   }
 
   log('Starting agent (one-shot mode)...');
-  const output = await runAgentQuery(prompt, input.sessionId, ipcMcp);
+  const output = await runAgentQuery(prompt, input.sessionId, ipcMcp, input.agentName || 'Assistant');
 
   log('Agent completed');
   writeOutput({
@@ -467,6 +503,7 @@ function readNextInboxMessage(): InboxMessage | null {
 
 async function runSupervisor(bootstrap: BootstrapInput): Promise<void> {
   log(`Supervisor started for group: ${bootstrap.groupFolder}`);
+  const agentName = bootstrap.agentName || 'Assistant';
 
   const ipcMcp = createIpcMcp({
     chatJid: bootstrap.chatJid,
@@ -515,6 +552,7 @@ async function runSupervisor(bootstrap: BootstrapInput): Promise<void> {
         message.prompt,
         sessionId,
         ipcMcp,
+        agentName,
         () => checkControl('interrupt'),
       );
 

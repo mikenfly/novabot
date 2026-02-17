@@ -69,11 +69,24 @@ function score(entry: MemoryEntry): number {
   return entry.mention_count / (daysSince + 1);
 }
 
+// When this entry is the TARGET of a relation, show the inverse label
+const INVERSE_LABELS: Record<string, string> = {
+  involves: 'involved_in',
+  part_of: 'includes',
+  related_to: 'related_to',
+  depends_on: 'required_by',
+};
+
 function formatEntry(entry: MemoryEntry): string {
   const relations = getRelations(entry.key);
   const relStr =
     relations.length > 0
-      ? ` [${relations.map((r) => `${r.relation_type}: ${r.source_key === entry.key ? r.target_key : r.source_key}`).join(', ')}]`
+      ? ` [${relations.map((r) => {
+          const isSource = r.source_key === entry.key;
+          const otherKey = isSource ? r.target_key : r.source_key;
+          const label = isSource ? r.relation_type : (INVERSE_LABELS[r.relation_type] || r.relation_type);
+          return `${label}: ${otherKey}`;
+        }).join(', ')}]`
       : '';
   return `- **${entry.key}** (mentioned ${entry.mention_count}x, last: ${entry.last_mentioned.slice(0, 10)}): ${entry.content}${relStr}`;
 }

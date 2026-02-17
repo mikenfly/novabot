@@ -197,6 +197,13 @@ export function removeRelation(
   return result.changes > 0;
 }
 
+export function deleteEntry(key: string): boolean {
+  const result = db
+    .prepare('DELETE FROM memory_entries WHERE key = ?')
+    .run(key);
+  return result.changes > 0;
+}
+
 export function listCategory(
   category: MemoryCategory,
   limit = 20,

@@ -5,6 +5,7 @@ import {
   getEntry,
   upsertEntry,
   bumpMention,
+  deleteEntry,
   searchByEmbedding,
   getRelations,
   addRelation,
@@ -212,6 +213,58 @@ Content style: write a current-state snapshot — what IS true right now, not wh
           return {
             content: [
               { type: 'text', text: `Bumped "${args.key}".` },
+            ],
+          };
+        },
+      ),
+
+      tool(
+        'delete_entry',
+        `Delete a memory entry. Will REFUSE if the entry still has relations — you must remove or transfer them first with remove_relation/add_relation.
+
+This forces you to think about the impact: if entry X involves Y, deleting X without handling that relation would leave Y with a broken link. Review connected entries, reorganize relations, then retry.`,
+        {
+          key: z.string().describe('The entry key to delete'),
+        },
+        async (args) => {
+          const entry = getEntry(args.key);
+          if (!entry) {
+            return {
+              content: [
+                { type: 'text', text: `Entry "${args.key}" not found.` },
+              ],
+            };
+          }
+
+          // Check for existing relations — refuse deletion if any exist
+          const relations = getRelations(args.key);
+          if (relations.length > 0) {
+            const relList = relations.map((r) => {
+              const direction = r.source_key === args.key ? 'outgoing' : 'incoming';
+              const otherKey = r.source_key === args.key ? r.target_key : r.source_key;
+              return `  - ${direction} ${r.relation_type}: ${otherKey}`;
+            }).join('\n');
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `Cannot delete "${args.key}" — it has ${relations.length} relation(s):\n${relList}\n\nRemove or transfer these relations first (use remove_relation/add_relation), then retry. Think about whether the connected entries need updating too.`,
+                },
+              ],
+              isError: true,
+            };
+          }
+
+          const deleted = deleteEntry(args.key);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: deleted
+                  ? `Deleted entry "${args.key}" (was in ${entry.category}).`
+                  : `Failed to delete "${args.key}".`,
+              },
             ],
           };
         },

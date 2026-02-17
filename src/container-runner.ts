@@ -8,6 +8,7 @@ import os from 'os';
 import path from 'path';
 
 import {
+  ASSISTANT_NAME,
   CONTAINER_IDLE_TIMEOUT,
   CONTAINER_IMAGE,
   CONTAINER_IPC_POLL_INTERVAL,
@@ -53,6 +54,7 @@ export interface ContainerInput {
   chatJid: string;
   isMain: boolean;
   isScheduledTask?: boolean;
+  agentName?: string;
 }
 
 export interface ContainerOutput {
@@ -586,6 +588,7 @@ interface BootstrapInput {
   groupFolder: string;
   chatJid: string;
   isMain: boolean;
+  agentName?: string;
 }
 
 interface InboxMessage {
@@ -738,6 +741,7 @@ export class ContainerManager {
       groupFolder: group.folder,
       chatJid: conversationId,
       isMain: false,
+      agentName: ASSISTANT_NAME,
     };
     container.stdin.write(JSON.stringify(bootstrap));
     container.stdin.end();

@@ -278,6 +278,7 @@ async function runAgent(
       groupFolder: group.folder,
       chatJid,
       isMain,
+      agentName: ASSISTANT_NAME,
     });
 
     if (output.newSessionId) {
