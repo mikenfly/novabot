@@ -44,7 +44,8 @@
 
 .login-card__input-group input {
   width: 100%;
-  padding: 0.7rem 0.85rem;
+  padding: 0.75rem 0.85rem;
+  min-height: 44px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -62,7 +63,8 @@
 
 .login-card__btn {
   width: 100%;
-  padding: 0.7rem 1.5rem;
+  padding: 0.75rem 1.5rem;
+  min-height: 44px;
   background: var(--accent);
   color: #fff;
   border: none;

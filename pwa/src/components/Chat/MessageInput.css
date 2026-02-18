@@ -49,8 +49,8 @@
 }
 
 .message-input__send {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   background: var(--accent);
   border: none;
@@ -76,8 +76,8 @@
 
 /* Mic button — same size/shape as send but different color */
 .message-input__mic {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   background: transparent;
   border: none;

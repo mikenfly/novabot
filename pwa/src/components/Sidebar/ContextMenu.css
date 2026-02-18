@@ -5,6 +5,7 @@
   border-radius: var(--radius-sm);
   box-shadow: 0 8px 24px var(--shadow-lg);
   min-width: 160px;
+  max-width: calc(100vw - 16px);
   z-index: 150;
   padding: 0.25rem;
   animation: contextMenuIn var(--transition-fast) forwards;

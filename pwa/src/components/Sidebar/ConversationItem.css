@@ -58,8 +58,8 @@
 
 .conversation-item__more {
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -67,7 +67,7 @@
   border: none;
   border-radius: var(--radius-sm);
   color: var(--text-tertiary);
-  font-size: 1rem;
+  font-size: 1.1rem;
   cursor: pointer;
   opacity: 0;
   transition: opacity var(--transition-fast), background var(--transition-fast);
@@ -76,6 +76,13 @@
 .conversation-item:hover .conversation-item__more,
 .conversation-item--active .conversation-item__more {
   opacity: 1;
+}
+
+/* Sur mobile, pas de hover → toujours visible */
+@media (max-width: 767px) {
+  .conversation-item__more {
+    opacity: 1;
+  }
 }
 
 .conversation-item__more:hover {

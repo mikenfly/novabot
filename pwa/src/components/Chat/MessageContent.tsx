@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { getToken } from '../../services/auth';
 import FilePreviewModal from '../FilePreview/FilePreviewModal';
 import MermaidDiagram from './MermaidDiagram';
@@ -72,7 +73,7 @@ export default function MessageContent({ content, conversationId }: MessageConte
   return (
     <>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkBreaks]}
         components={{
           img: ({ src, alt }) => {
             if (!src) return null;

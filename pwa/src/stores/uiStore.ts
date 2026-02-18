@@ -11,8 +11,8 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  sidebarOpen: true,
-  isMobile: false,
+  sidebarOpen: !window.matchMedia('(max-width: 767px)').matches,
+  isMobile: window.matchMedia('(max-width: 767px)').matches,
   connectionStatus: 'disconnected',
 
   toggleSidebar: () => {
@@ -28,6 +28,10 @@ export const useUIStore = create<UIState>((set) => ({
   },
 
   setIsMobile: (isMobile: boolean) => {
-    set({ isMobile });
+    set((state) => ({
+      isMobile,
+      // Fermer la sidebar quand on passe en mobile
+      sidebarOpen: isMobile ? false : state.sidebarOpen,
+    }));
   },
 }));
