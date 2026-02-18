@@ -625,6 +625,13 @@ interface ContainerHandle {
     reject: (err: Error) => void;
   }>;
   onStatus?: (status: string) => void;
+  /** Set to true when the container process has exited — prevents zombie handles */
+  exited: boolean;
+  exitCode: number | null;
+  /** The inbox message currently being processed by the container */
+  currentInbox: InboxMessage | null;
+  /** If set, the outbox poll should skip resolving this msgId (it was re-queued) */
+  skipInterruptedResolve: string | null;
 }
 
 function buildPersistentContainerArgs(mounts: VolumeMount[], containerName: string): string[] {
@@ -665,11 +672,25 @@ export class ContainerManager {
     group: RegisteredGroup,
     message: { prompt: string; audioMode?: boolean },
     onStatus?: (status: string) => void,
+    options?: { requeueCurrent?: boolean },
   ): Promise<ContainerOutput> {
     let handle = this.containers.get(conversationId);
 
+    // If existing handle's container has exited, clean it up and spawn fresh
+    if (handle?.exited) {
+      logger.warn({ conversationId }, 'Found dead container handle, removing before respawn');
+      this.containers.delete(conversationId);
+      handle = undefined;
+    }
+
     if (!handle) {
       handle = await this.spawnContainer(conversationId, group, onStatus);
+
+      // Guard: container may have exited between waitForReady and here
+      if (handle.exited) {
+        throw new Error(`Container died immediately after startup (code ${handle.exitCode})`);
+      }
+
       this.containers.set(conversationId, handle);
     }
 
@@ -685,15 +706,41 @@ export class ContainerManager {
     };
 
     return new Promise<ContainerOutput>((resolve, reject) => {
+      if (handle!.exited) {
+        // Container died between spawn check and now — reject immediately
+        this.containers.delete(conversationId);
+        reject(new Error(`Container exited (code ${handle!.exitCode})`));
+        return;
+      }
+
       if (handle!.state === 'busy') {
-        // Queue the message and interrupt the current query so the agent
-        // processes the new message promptly (user clearly wants to redirect)
+        // Queue the message and interrupt the current query
         handle!.messageQueue.push({ inbox, resolve, reject });
+
+        if (options?.requeueCurrent && handle!.currentInbox) {
+          // Re-queue the currently in-flight message AFTER this one so it gets
+          // re-processed with updated context (e.g. after critical injection)
+          const currentResolver = handle!.pendingResolvers.get(handle!.currentInbox.id);
+          if (currentResolver) {
+            handle!.pendingResolvers.delete(handle!.currentInbox.id);
+            handle!.messageQueue.push({
+              inbox: handle!.currentInbox,
+              resolve: currentResolver.resolve,
+              reject: currentResolver.reject,
+            });
+            handle!.skipInterruptedResolve = handle!.currentInbox.id;
+            logger.info({ conversationId, msgId, requeuedMsgId: handle!.currentInbox.id, queueSize: handle!.messageQueue.length },
+              'Message queued + current message re-queued after injection');
+          }
+        } else {
+          logger.info({ conversationId, msgId, queueSize: handle!.messageQueue.length }, 'Message queued + interrupt sent (container busy)');
+        }
+
         this.interruptContainer(conversationId);
-        logger.info({ conversationId, msgId, queueSize: handle!.messageQueue.length }, 'Message queued + interrupt sent (container busy)');
       } else {
         // Send immediately
         handle!.state = 'busy';
+        handle!.currentInbox = inbox;
         this.resetIdleTimer(handle!);
         handle!.pendingResolvers.set(msgId, { resolve, reject });
         this.writeInbox(handle!, inbox);
@@ -757,6 +804,10 @@ export class ContainerManager {
       process: container,
       pendingResolvers: new Map(),
       onStatus,
+      exited: false,
+      exitCode: null,
+      currentInbox: null,
+      skipInterruptedResolve: null,
     };
 
     // Watch stderr for status updates
@@ -816,6 +867,11 @@ export class ContainerManager {
     const start = Date.now();
 
     while (Date.now() - start < timeout) {
+      // Check if container exited during startup (race condition guard)
+      if (handle.exited) {
+        throw new Error(`Container exited during startup (code ${handle.exitCode})`);
+      }
+
       try {
         if (fs.existsSync(outboxDir)) {
           const files = fs.readdirSync(outboxDir).filter((f) => f.endsWith('.json'));
@@ -825,12 +881,22 @@ export class ContainerManager {
               const data: OutboxMessage = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
               if (data.id === 'ready') {
                 fs.unlinkSync(filePath);
+                // Double-check: container may have exited between writing ready and now
+                if (handle.exited) {
+                  throw new Error(`Container exited immediately after ready signal (code ${handle.exitCode})`);
+                }
                 return;
               }
-            } catch { /* ignore partial files */ }
+            } catch (err) {
+              // Re-throw our own exit errors, ignore file parse errors
+              if (err instanceof Error && err.message.includes('Container exited')) throw err;
+            }
           }
         }
-      } catch { /* ignore */ }
+      } catch (err) {
+        // Re-throw our own exit errors, ignore filesystem errors
+        if (err instanceof Error && err.message.includes('Container exited')) throw err;
+      }
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
 
@@ -843,7 +909,7 @@ export class ContainerManager {
     const outboxDir = path.join(DATA_DIR, 'ipc', handle.groupFolder, 'outbox');
 
     const poll = () => {
-      if (!this.containers.has(handle.conversationId)) return;
+      if (handle.exited || !this.containers.has(handle.conversationId)) return;
 
       try {
         const files = fs.readdirSync(outboxDir)
@@ -858,19 +924,27 @@ export class ContainerManager {
 
             if (data.id === 'ready') continue; // Skip late ready signals
 
-            const resolver = handle.pendingResolvers.get(data.id);
-            if (resolver) {
-              handle.pendingResolvers.delete(data.id);
-              resolver.resolve({
-                status: data.status,
-                result: data.result || null,
-                newSessionId: data.newSessionId,
-                error: data.error,
-              });
+            // If this message was re-queued (critical injection), don't resolve
+            // its original promise — the re-queued copy will handle it
+            if (handle.skipInterruptedResolve === data.id) {
+              handle.skipInterruptedResolve = null;
+              logger.info({ msgId: data.id }, 'Skipping resolve for re-queued message (will be re-processed)');
+            } else {
+              const resolver = handle.pendingResolvers.get(data.id);
+              if (resolver) {
+                handle.pendingResolvers.delete(data.id);
+                resolver.resolve({
+                  status: data.status,
+                  result: data.result || null,
+                  newSessionId: data.newSessionId,
+                  error: data.error,
+                });
+              }
             }
 
             // Process queued messages
             handle.state = 'idle';
+            handle.currentInbox = null;
             this.processQueue(handle);
           } catch (err) {
             logger.error({ file, err }, 'Error processing outbox message');
@@ -897,6 +971,7 @@ export class ContainerManager {
 
     const next = handle.messageQueue.shift()!;
     handle.state = 'busy';
+    handle.currentInbox = next.inbox;
     handle.pendingResolvers.set(next.inbox.id, { resolve: next.resolve, reject: next.reject });
     this.writeInbox(handle, next.inbox);
     logger.info({ conversationId: handle.conversationId, msgId: next.inbox.id }, 'Processing queued message');
@@ -926,6 +1001,9 @@ export class ContainerManager {
   }
 
   private handleContainerExit(handle: ContainerHandle, code: number | null): void {
+    handle.exited = true;
+    handle.exitCode = code;
+
     if (handle.idleTimer) clearTimeout(handle.idleTimer);
     if (handle.outboxPollTimer) clearTimeout(handle.outboxPollTimer);
 

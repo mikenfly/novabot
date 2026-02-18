@@ -499,6 +499,21 @@ export function startWebServer(
       })
       .catch((err) => {
         logger.error({ err, conversationId }, 'PWA agent error');
+
+        // Send an error message so the user gets visible feedback
+        const errorText = 'Désolé, une erreur est survenue. Réessayez.';
+        const errorMsgId = generatePWAMessageId();
+        addPWAMessage(errorMsgId, conversationId, 'assistant', errorText);
+        broadcastToClients({
+          type: 'message',
+          data: {
+            chat_jid: conversationId,
+            sender_name: ASSISTANT_NAME,
+            content: `${ASSISTANT_NAME}: ${errorText}`,
+            timestamp: new Date().toISOString(),
+          },
+        });
+
         broadcastToClients({
           type: 'agent_status',
           data: {

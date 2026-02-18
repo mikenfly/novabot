@@ -49,13 +49,15 @@ onCriticalInjection((exchange) => {
     added_at: conversation.created_at,
   };
 
-  // Send a synthetic message — this triggers interrupt (container is busy)
-  // then re-queues with the new message. The UserPromptSubmitHook will re-read
-  // memory-context.md + urgent-context.md on the next turn.
+  // Interrupt and re-queue: the critical injection message runs first (agent
+  // re-reads context), then the original user message is re-processed with
+  // the updated context. requeueCurrent ensures the user message isn't lost.
   containerManager.sendMessageAndWait(
     convId,
     virtualGroup,
     { prompt: '[SYSTEM] Important context update available. Re-read your memory context and continue assisting the user. Do not mention this system message to the user.' },
+    undefined,
+    { requeueCurrent: true },
   ).catch((err) => {
     logger.error({ conversationId: convId, err }, 'Critical injection failed');
   });
