@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useMessageStore } from '../../stores/messageStore';
+import { useConversationStore } from '../../stores/conversationStore';
 import { useVisualViewport } from '../../hooks/useVisualViewport';
 import './MessageInput.css';
 
@@ -10,7 +11,9 @@ interface MessageInputProps {
 const WAVEFORM_BARS = 30;
 
 export default function MessageInput({ conversationId }: MessageInputProps) {
-  const [content, setContent] = useState('');
+  const draft = useConversationStore((s) => s.drafts[conversationId] ?? '');
+  const setDraft = useConversationStore((s) => s.setDraft);
+  const [content, setContent] = useState(draft);
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -34,6 +37,16 @@ export default function MessageInput({ conversationId }: MessageInputProps) {
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 150)}px`;
   }, []);
+
+  // Restore draft when switching conversations
+  useEffect(() => {
+    setContent(useConversationStore.getState().drafts[conversationId] ?? '');
+  }, [conversationId]);
+
+  // Save draft to store on change
+  useEffect(() => {
+    setDraft(conversationId, content);
+  }, [content, conversationId, setDraft]);
 
   useEffect(() => {
     adjustHeight();
@@ -81,8 +94,9 @@ export default function MessageInput({ conversationId }: MessageInputProps) {
     const trimmed = content.trim();
     if (!trimmed) return;
     setContent('');
+    setDraft(conversationId, '');
     await sendMessage(conversationId, trimmed);
-  }, [content, conversationId, sendMessage]);
+  }, [content, conversationId, sendMessage, setDraft]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

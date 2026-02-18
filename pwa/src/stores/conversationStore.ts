@@ -7,11 +7,13 @@ interface ConversationState {
   conversations: Conversation[];
   activeId: string | null;
   isLoading: boolean;
+  drafts: Record<string, string>;
   fetchConversations: () => Promise<void>;
   createConversation: (name?: string) => Promise<string>;
   renameConversation: (id: string, name: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
   setActive: (id: string) => void;
+  setDraft: (id: string, text: string) => void;
   /** Move a conversation to the top (new message received) */
   bumpConversation: (id: string) => void;
   handleConversationCreated: (conv: Conversation) => void;
@@ -23,6 +25,7 @@ export const useConversationStore = create<ConversationState>((set) => ({
   conversations: [],
   activeId: null,
   isLoading: false,
+  drafts: {},
 
   fetchConversations: async () => {
     set({ isLoading: true });
@@ -68,6 +71,18 @@ export const useConversationStore = create<ConversationState>((set) => ({
 
   setActive: (id: string) => {
     set({ activeId: id });
+  },
+
+  setDraft: (id: string, text: string) => {
+    set((state) => {
+      if (!text) {
+        if (!(id in state.drafts)) return state;
+        const { [id]: _, ...rest } = state.drafts;
+        return { drafts: rest };
+      }
+      if (state.drafts[id] === text) return state;
+      return { drafts: { ...state.drafts, [id]: text } };
+    });
   },
 
   bumpConversation: (id: string) => {
