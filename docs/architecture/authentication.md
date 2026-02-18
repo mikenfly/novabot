@@ -329,7 +329,7 @@ export function revokeToken(tokenOrDeviceName: string): boolean {
 - Collision probability negligible
 
 **Transmission** :
-- HTTPS enforced (Tailscale Funnel provides TLS)
+- HTTPS enforced (Cloudflare Tunnel provides TLS)
 - No plaintext transmission over unsecured connections
 
 **Storage** :
@@ -343,7 +343,7 @@ export function revokeToken(tokenOrDeviceName: string): boolean {
 **Attack** : Man-in-the-middle captures token during pairing.
 
 **Mitigation** :
-- HTTPS enforced (Tailscale Funnel)
+- HTTPS enforced (Cloudflare Tunnel)
 - 5-minute expiration window for temporary tokens
 - One-time use for temporary tokens
 
@@ -372,7 +372,7 @@ export function revokeToken(tokenOrDeviceName: string): boolean {
 **Mitigation** :
 - Physical access required to terminal displaying QR
 - Temporary token visible in URL (user can verify domain)
-- Tailscale domain unique to user's machine
+- Cloudflare domain unique to user's configuration
 
 ### Token Lifetime Management
 

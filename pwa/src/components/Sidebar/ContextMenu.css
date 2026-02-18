@@ -1,0 +1,90 @@
+.context-menu {
+  position: fixed;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px var(--shadow-lg);
+  min-width: 160px;
+  z-index: 150;
+  padding: 0.25rem;
+  animation: contextMenuIn var(--transition-fast) forwards;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+@keyframes contextMenuIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.context-menu__item {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.context-menu__item:hover {
+  background: var(--bg-tertiary);
+}
+
+.context-menu__item--danger {
+  color: var(--error);
+}
+
+.context-menu__rename {
+  padding: 0.25rem;
+}
+
+.context-menu__rename-input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: inherit;
+  outline: none;
+}
+
+.context-menu__toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.context-menu__toggle:hover {
+  background: var(--bg-tertiary);
+}
+
+.context-menu__toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  opacity: 0.3;
+  transition: all var(--transition-fast);
+}
+
+.context-menu__toggle-dot--active {
+  background: var(--accent);
+  opacity: 1;
+}

@@ -8,7 +8,7 @@ channels:
     port: 17283
     # Mode standalone : conversations directes avec l'agent (pas de WhatsApp nécessaire)
     standalone: true
-    tailscale_funnel: true
+    cloudflare_tunnel: true   # Nécessite CLOUDFLARE_TUNNEL_TOKEN dans .env
 
   # WhatsApp - Bot messagerie
   whatsapp:

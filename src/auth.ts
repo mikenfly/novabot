@@ -196,7 +196,13 @@ export function verifyPermanentToken(token: string): boolean {
  * Used by middleware for backward compatibility
  */
 export function verifyToken(token: string): boolean {
-  // Check permanent tokens first (most common case)
+  // Check DEV_TOKEN from .env first (stable dev access, never expires)
+  const devToken = process.env.DEV_TOKEN;
+  if (devToken && token === devToken) {
+    return true;
+  }
+
+  // Check permanent tokens (most common case)
   if (verifyPermanentToken(token)) {
     return true;
   }
@@ -253,6 +259,22 @@ function cleanupExpiredTokens(): void {
       'Expired temporary tokens cleaned up'
     );
   }
+}
+
+/**
+ * Ensure an access token exists — return existing or generate temporary.
+ */
+export function ensureAccessToken(): string {
+  const existingToken = getFirstToken();
+  if (existingToken) {
+    logger.info('Utilisation du token existant');
+    return existingToken;
+  }
+
+  logger.info('Génération d\'un token temporaire (5 min)...');
+  const token = generateTemporaryToken();
+  logger.info('Token temporaire généré');
+  return token;
 }
 
 /**

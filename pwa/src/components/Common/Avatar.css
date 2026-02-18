@@ -1,0 +1,21 @@
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.avatar--user {
+  background: linear-gradient(135deg, var(--accent), #a78bfa);
+}
+
+.avatar--assistant {
+  background: linear-gradient(135deg, #34d399, #06b6d4);
+}

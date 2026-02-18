@@ -8,19 +8,37 @@ import { getAllChats, getMessagesSince } from './db.js';
 import {
   exchangeTemporaryToken,
   verifyToken,
-  initializeAuth,
+  generateTemporaryToken,
   getAllTokens,
   revokeToken,
 } from './auth.js';
-import { ASSISTANT_NAME, DATA_DIR } from './config.js';
+import { ASSISTANT_NAME, GROUPS_DIR } from './config.js';
+import { getLimits, saveLimits, getMemoryContextContent } from './memory/generate-context.js';
+import { feedExchange, getProcessingStatus, resetContextAgent } from './memory/context-agent.js';
+import { readTraces } from './memory/trace-logger.js';
 import { logger } from './logger.js';
 import { loadChannelsConfig } from './channels-config.js';
 import {
   createPWAConversation,
   getAllPWAConversations,
   getPWAConversation,
+  getPWAMessages,
+  renamePWAConversation,
+  deletePWAConversation,
   sendToPWAAgent,
+  containerManager,
 } from './pwa-channel.js';
+import {
+  savePushSubscription,
+  removePushSubscription,
+  generatePWAMessageId,
+  addPWAMessage,
+  setPWAAutoRename,
+} from './db.js';
+import { transcribeAudio } from './tts-stt.js';
+import { maybeEvaluateTitle } from './title-agent.js';
+import crypto from 'crypto';
+import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,29 +69,42 @@ function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
 export function startWebServer(
   port: number,
   registeredGroups: () => Record<string, any>,
-  sendMessageCallback: (jid: string, text: string) => Promise<void>
+  sendMessageCallback: (jid: string, text: string) => Promise<void>,
 ): http.Server {
   const app = express();
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
 
   app.use(express.json());
-  app.use(express.static(path.join(__dirname, '..', 'public')));
+
+  // Serve static files from pwa/dist/ with SPA fallback
+  const pwaDistDir = path.join(__dirname, '..', 'pwa', 'dist');
+  app.use(express.static(pwaDistDir));
 
   // Health check
-  app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok' });
   });
 
-  // Login endpoint - exchanges temporary token for permanent token
+  // Login endpoint - exchanges temporary token for permanent token,
+  // or accepts an existing permanent token directly
   app.post('/api/login', (req, res) => {
-    const { token: tempToken, deviceName } = req.body;
+    const { token: inputToken, deviceName } = req.body;
 
-    if (!tempToken) {
+    if (!inputToken) {
       return res.status(400).json({ error: 'Token required' });
     }
 
-    const permanentToken = exchangeTemporaryToken(tempToken, deviceName || 'Unknown Device');
+    // If the token is already a valid permanent token, return it directly
+    if (verifyToken(inputToken)) {
+      return res.json({ token: inputToken });
+    }
+
+    // Otherwise try to exchange as temporary token
+    const permanentToken = exchangeTemporaryToken(
+      inputToken,
+      deviceName || 'Unknown Device',
+    );
 
     if (!permanentToken) {
       return res.status(401).json({ error: 'Invalid or expired token' });
@@ -82,195 +113,586 @@ export function startWebServer(
     res.json({ token: permanentToken });
   });
 
-  // Get all conversations/groups
+  // List all conversations
   app.get('/api/conversations', authMiddleware, (req, res) => {
     const config = loadChannelsConfig();
     const conversations: any[] = [];
 
-    // Mode standalone PWA : conversations PWA uniquement
+    // PWA conversations
     if (config.channels.pwa?.standalone) {
-      const pwaConvs = getAllPWAConversations();
-      conversations.push(...pwaConvs.map(conv => ({
-        jid: conv.id,
-        name: conv.name,
-        folder: `pwa-${conv.id}`,
-        lastActivity: conv.lastActivity,
-        type: 'pwa',
-      })));
+      conversations.push(...getAllPWAConversations());
     } else {
-      // Mode WhatsApp : groupes WhatsApp
+      // WhatsApp groups
       const groups = registeredGroups();
       const chats = getAllChats();
 
-      conversations.push(...Object.entries(groups).map(([jid, group]: [string, any]) => {
-        const chat = chats.find((c) => c.jid === jid);
-        return {
-          jid,
-          name: group.name,
-          folder: group.folder,
-          lastActivity: chat?.last_message_time || group.added_at,
-          type: 'whatsapp',
-        };
-      }));
+      conversations.push(
+        ...Object.entries(groups).map(([jid, group]: [string, any]) => {
+          const chat = chats.find((c) => c.jid === jid);
+          return {
+            jid,
+            name: group.name,
+            folder: group.folder,
+            lastActivity: chat?.last_message_time || group.added_at,
+            type: 'whatsapp',
+          };
+        }),
+      );
     }
 
-    // Sort by last activity
-    conversations.sort((a, b) =>
-      new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime()
+    conversations.sort(
+      (a, b) =>
+        new Date(b.lastActivity).getTime() -
+        new Date(a.lastActivity).getTime(),
     );
 
     res.json({ conversations });
   });
 
-  // Get messages for a conversation
-  app.get('/api/conversations/:jid/messages', authMiddleware, (req, res) => {
-    const { jid } = req.params;
-    const { since } = req.query;
-    const config = loadChannelsConfig();
+  // Create a new PWA conversation
+  app.post('/api/conversations', authMiddleware, (req, res) => {
+    const { name } = req.body;
+    const conversation = createPWAConversation(name);
 
-    // Mode standalone PWA
-    if (config.channels.pwa?.standalone && jid.startsWith('pwa-')) {
-      const conversation = getPWAConversation(jid);
-      if (!conversation) {
-        return res.status(404).json({ error: 'Conversation not found' });
-      }
+    broadcastToClients({
+      type: 'conversation_created',
+      data: {
+        jid: conversation.jid,
+        name: conversation.name,
+        lastActivity: conversation.lastActivity,
+        type: 'pwa',
+      },
+    });
 
-      const sinceTimestamp = typeof since === 'string' ? since : '';
-      const filteredMessages = conversation.messages.filter(
-        msg => !sinceTimestamp || msg.timestamp > sinceTimestamp
-      );
-
-      res.json({
-        messages: filteredMessages.map(msg => ({
-          id: msg.id,
-          chat_jid: jid,
-          sender_name: msg.sender === 'user' ? 'You' : ASSISTANT_NAME,
-          content: msg.sender === 'assistant' ? `${ASSISTANT_NAME}: ${msg.content}` : msg.content,
-          timestamp: msg.timestamp,
-          is_from_me: msg.sender === 'user',
-        }))
-      });
-      return;
-    }
-
-    // Mode WhatsApp
-    const groups = registeredGroups();
-    if (!groups[jid]) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
-
-    const sinceTimestamp = typeof since === 'string' ? since : '';
-    const messages = getMessagesSince(jid, sinceTimestamp, ASSISTANT_NAME);
-
-    res.json({ messages });
+    res.json(conversation);
   });
 
-  // Send a message
-  app.post('/api/conversations/:jid/messages', authMiddleware, async (req, res) => {
-    const { jid } = req.params;
-    let { content } = req.body;
+  // Get messages for a conversation
+  app.get(
+    '/api/conversations/:id/messages',
+    authMiddleware,
+    (req: AuthRequest, res) => {
+      const { id } = req.params;
+      const { since } = req.query;
+      const config = loadChannelsConfig();
 
-    if (!content || typeof content !== 'string') {
-      return res.status(400).json({ error: 'Content required' });
-    }
-
-    const config = loadChannelsConfig();
-
-    try {
-      // Mode standalone PWA
-      if (config.channels.pwa?.standalone && jid.startsWith('pwa-')) {
-        const conversation = getPWAConversation(jid);
+      // PWA conversation
+      if (config.channels.pwa?.standalone && id.startsWith('pwa-')) {
+        const conversation = getPWAConversation(id);
         if (!conversation) {
           return res.status(404).json({ error: 'Conversation not found' });
         }
 
-        // Envoyer directement à l'agent
-        const response = await sendToPWAAgent(jid, content, ASSISTANT_NAME);
+        const sinceStr = typeof since === 'string' ? since : undefined;
+        const messages = getPWAMessages(id, sinceStr);
+        res.json({ messages });
+        return;
+      }
 
-        // Broadcast to all connected WebSocket clients
+      // WhatsApp
+      const groups = registeredGroups();
+      if (!groups[id]) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+
+      const sinceTimestamp = typeof since === 'string' ? since : '';
+      const messages = getMessagesSince(id, sinceTimestamp, ASSISTANT_NAME);
+      res.json({ messages });
+    },
+  );
+
+  // Send a message
+  app.post(
+    '/api/conversations/:id/messages',
+    authMiddleware,
+    async (req: AuthRequest, res) => {
+      const { id } = req.params;
+      let { content, audioMode } = req.body;
+
+      if (!content || typeof content !== 'string') {
+        return res.status(400).json({ error: 'Content is required' });
+      }
+
+      const config = loadChannelsConfig();
+
+      try {
+        // PWA conversation
+        if (config.channels.pwa?.standalone && id.startsWith('pwa-')) {
+          const conversation = getPWAConversation(id);
+          if (!conversation) {
+            return res.status(404).json({ error: 'Conversation not found' });
+          }
+
+          const userMsgId = generatePWAMessageId();
+
+          // Don't broadcast user message - the sending client already has it
+          // as a pending message. Other clients will see it on next fetch.
+
+          // Return immediately, agent response arrives via WebSocket
+          res.json({ success: true, messageId: userMsgId });
+
+          // Run agent in background
+          runAgentAndBroadcast(id, content, !!audioMode);
+
+          return;
+        }
+
+        // WhatsApp mode
+        const groups = registeredGroups();
+        const group = groups[id];
+        if (!group) {
+          return res.status(404).json({ error: 'Conversation not found' });
+        }
+
+        const triggerPattern = new RegExp(`^@${ASSISTANT_NAME}\\b`, 'i');
+        if (group.folder !== 'main' && !triggerPattern.test(content)) {
+          content = `@${ASSISTANT_NAME} ${content}`;
+        }
+
+        await sendMessageCallback(id, content);
+
         broadcastToClients({
           type: 'message',
           data: {
-            chat_jid: jid,
-            sender_name: ASSISTANT_NAME,
-            content: `${ASSISTANT_NAME}: ${response}`,
+            chat_jid: id,
+            sender_name: 'You',
+            content,
             timestamp: new Date().toISOString(),
           },
         });
 
         res.json({ success: true });
-        return;
+      } catch (err) {
+        logger.error({ err, id }, 'Failed to send message via web API');
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    },
+  );
+
+  // Update a conversation (rename and/or toggle auto-rename)
+  app.patch(
+    '/api/conversations/:id',
+    authMiddleware,
+    (req: AuthRequest, res) => {
+      const { id } = req.params;
+      const { name, autoRename } = req.body;
+
+      if (!name && autoRename === undefined) {
+        return res.status(400).json({ error: 'Name or autoRename is required' });
       }
 
-      // Mode WhatsApp
-      const groups = registeredGroups();
-      const group = groups[jid];
-      if (!group) {
+      // Manual rename → also disable auto-rename
+      if (name && typeof name === 'string') {
+        const success = renamePWAConversation(id, name);
+        if (!success) {
+          return res.status(404).json({ error: 'Conversation not found' });
+        }
+        setPWAAutoRename(id, false);
+
+        broadcastToClients({
+          type: 'conversation_renamed',
+          data: { jid: id, name },
+        });
+      }
+
+      // Toggle auto-rename
+      if (autoRename !== undefined) {
+        setPWAAutoRename(id, !!autoRename);
+      }
+
+      res.json({ success: true });
+    },
+  );
+
+  // Delete a conversation
+  app.delete(
+    '/api/conversations/:id',
+    authMiddleware,
+    (req: AuthRequest, res) => {
+      const { id } = req.params;
+
+      const success = deletePWAConversation(id);
+      if (!success) {
         return res.status(404).json({ error: 'Conversation not found' });
       }
 
-      // For PWA: auto-trigger the assistant by adding trigger pattern
-      // (unless it's the main group which responds to everything)
-      const triggerPattern = new RegExp(`^@${ASSISTANT_NAME}\\b`, 'i');
-      if (group.folder !== 'main' && !triggerPattern.test(content)) {
-        content = `@${ASSISTANT_NAME} ${content}`;
-      }
-
-      // Send via WhatsApp
-      await sendMessageCallback(jid, content);
-
-      // Broadcast to all connected WebSocket clients
       broadcastToClients({
-        type: 'message',
+        type: 'conversation_deleted',
+        data: { jid: id },
+      });
+
+      res.json({ success: true });
+    },
+  );
+
+  // Batch delete conversations
+  app.delete('/api/conversations', authMiddleware, (req: AuthRequest, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'ids array is required' });
+    }
+
+    const deleted: string[] = [];
+    for (const id of ids) {
+      if (typeof id === 'string' && deletePWAConversation(id)) {
+        broadcastToClients({
+          type: 'conversation_deleted',
+          data: { jid: id },
+        });
+        deleted.push(id);
+      }
+    }
+
+    res.json({ deleted });
+  });
+
+  // Interrupt the agent for a conversation
+  app.post(
+    '/api/conversations/:id/interrupt',
+    authMiddleware,
+    (req: AuthRequest, res) => {
+      const { id } = req.params;
+
+      containerManager.interruptContainer(id);
+
+      broadcastToClients({
+        type: 'agent_status',
         data: {
-          chat_jid: jid,
-          sender_name: 'You',
-          content,
+          conversation_id: id,
+          status: 'interrupted',
           timestamp: new Date().toISOString(),
         },
       });
 
       res.json({ success: true });
+    },
+  );
+
+  // Get file from conversation (supports ?token= query param for <img src> usage)
+  app.get(
+    '/api/conversations/:id/files/*',
+    (req: AuthRequest, res, next) => {
+      // Accept token from query param (for inline <img>, <video>, <audio> src)
+      const queryToken = req.query.token as string | undefined;
+      if (queryToken && verifyToken(queryToken)) {
+        req.token = queryToken;
+        return next();
+      }
+      return authMiddleware(req, res, next);
+    },
+    (req: AuthRequest, res) => {
+      const { id } = req.params;
+      const filepath = (req.params as any)[0] as string;
+
+      if (!filepath || filepath.includes('..') || filepath.startsWith('/')) {
+        return res.status(403).json({ error: 'Path traversal not allowed' });
+      }
+
+      const conversation = getPWAConversation(id);
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+
+      const fullPath = path.resolve(
+        GROUPS_DIR,
+        conversation.folder,
+        filepath,
+      );
+      const groupDir = path.resolve(GROUPS_DIR, conversation.folder);
+
+      // Double-check path traversal after resolution
+      if (!fullPath.startsWith(groupDir + path.sep)) {
+        return res.status(403).json({ error: 'Path traversal not allowed' });
+      }
+
+      if (!fs.existsSync(fullPath)) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+
+      res.sendFile(fullPath);
+    },
+  );
+
+  // --- Helper: run agent and broadcast results (text + audio messages) ---
+  // Reply messages are broadcast in real-time via the watcher callback.
+  // Only the final main message is broadcast here after the agent finishes.
+  function runAgentAndBroadcast(conversationId: string, content: string, audioMode: boolean, skipUserMessage?: boolean) {
+    sendToPWAAgent(
+      conversationId,
+      content,
+      ASSISTANT_NAME,
+      (convId, status) => {
+        broadcastToClients({
+          type: 'agent_status',
+          data: {
+            conversation_id: convId,
+            status,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      },
+      audioMode,
+      skipUserMessage,
+      // Real-time reply callback: broadcast each reply immediately as it arrives
+      (reply) => {
+        broadcastToClients({
+          type: 'message',
+          data: {
+            chat_jid: conversationId,
+            sender_name: ASSISTANT_NAME,
+            content: `${ASSISTANT_NAME}: ${reply.text}`,
+            timestamp: new Date().toISOString(),
+            ...(reply.audioSegments && { audio_segments: reply.audioSegments }),
+          },
+        });
+      },
+    )
+      .then(({ response, renamedTo, audioSegments }) => {
+        if (renamedTo) {
+          broadcastToClients({
+            type: 'conversation_renamed',
+            data: { jid: conversationId, name: renamedTo },
+          });
+        }
+        // Empty response = interrupted or already sent via reply IPC.
+        // Always send 'done' status so the typing indicator clears.
+        if (!response) {
+          broadcastToClients({
+            type: 'agent_status',
+            data: {
+              conversation_id: conversationId,
+              status: 'done',
+              timestamp: new Date().toISOString(),
+            },
+          });
+          // Still evaluate title (conversation may have progressed via IPC replies)
+          maybeEvaluateTitle(conversationId, (id, name) => {
+            broadcastToClients({ type: 'conversation_renamed', data: { jid: id, name } });
+          }).catch((err) => logger.error({ err, conversationId }, 'Title agent error'));
+          return;
+        }
+
+        // Broadcast main (final) message with text + speak audio segments
+        broadcastToClients({
+          type: 'message',
+          data: {
+            chat_jid: conversationId,
+            sender_name: ASSISTANT_NAME,
+            content: `${ASSISTANT_NAME}: ${response}`,
+            timestamp: new Date().toISOString(),
+            ...(audioSegments && { audio_segments: audioSegments }),
+          },
+        });
+        broadcastToClients({
+          type: 'agent_status',
+          data: {
+            conversation_id: conversationId,
+            status: 'done',
+            timestamp: new Date().toISOString(),
+          },
+        });
+
+        // Async title evaluation (non-blocking, fire-and-forget)
+        maybeEvaluateTitle(conversationId, (id, name) => {
+          broadcastToClients({ type: 'conversation_renamed', data: { jid: id, name } });
+        }).catch((err) => logger.error({ err, conversationId }, 'Title agent error'));
+      })
+      .catch((err) => {
+        logger.error({ err, conversationId }, 'PWA agent error');
+        broadcastToClients({
+          type: 'agent_status',
+          data: {
+            conversation_id: conversationId,
+            status: 'error',
+            timestamp: new Date().toISOString(),
+          },
+        });
+      });
+  }
+
+  // --- Audio message upload endpoint ---
+  app.post(
+    '/api/conversations/:id/audio',
+    express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '10mb' }),
+    (req: AuthRequest, res, next) => {
+      // Auth via query param (simpler for FormData/blob uploads) or header
+      const queryToken = req.query.token as string | undefined;
+      if (queryToken && verifyToken(queryToken)) {
+        req.token = queryToken;
+        return next();
+      }
+      return authMiddleware(req, res, next);
+    },
+    async (req: AuthRequest, res) => {
+      const { id } = req.params;
+      const config = loadChannelsConfig();
+
+      if (!config.channels.pwa?.standalone || !id.startsWith('pwa-')) {
+        return res.status(400).json({ error: 'Audio messages only supported for PWA conversations' });
+      }
+
+      const conversation = getPWAConversation(id);
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+
+      if (!req.body || !(req.body instanceof Buffer) || req.body.length === 0) {
+        return res.status(400).json({ error: 'Audio data required' });
+      }
+
+      try {
+        // Save audio to temp file for Whisper
+        const tmpFile = path.join(os.tmpdir(), `nanoclaw-audio-${crypto.randomBytes(6).toString('hex')}.webm`);
+        fs.writeFileSync(tmpFile, req.body);
+
+        // Transcribe with Whisper
+        logger.info({ conversationId: id, size: req.body.length }, 'Transcribing audio message');
+        const transcription = await transcribeAudio(tmpFile);
+        logger.info({ conversationId: id, textLength: transcription.length }, 'Audio transcribed');
+
+        // Save audio permanently to group dir
+        const audioFilename = `user-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.webm`;
+        const groupAudioDir = path.join(GROUPS_DIR, conversation.folder, 'audio');
+        fs.mkdirSync(groupAudioDir, { recursive: true });
+        fs.copyFileSync(tmpFile, path.join(groupAudioDir, audioFilename));
+        fs.unlinkSync(tmpFile);
+
+        const audioUrl = `audio/${audioFilename}`;
+
+        // Create user message with transcription + audio
+        const userMsgId = generatePWAMessageId();
+        addPWAMessage(userMsgId, id, 'user', transcription, audioUrl);
+
+        // Return immediately
+        res.json({ success: true, messageId: userMsgId, transcription, audioUrl });
+
+        // Show user message to other clients
+        broadcastToClients({
+          type: 'message',
+          data: {
+            chat_jid: id,
+            sender_name: 'You',
+            content: transcription,
+            audio_url: audioUrl,
+            timestamp: new Date().toISOString(),
+            is_from_me: true,
+          },
+        });
+
+        // Run agent with audio mode
+        runAgentAndBroadcast(id, transcription, true, true);
+      } catch (err) {
+        logger.error({ err, conversationId: id }, 'Audio message processing failed');
+        res.status(500).json({ error: 'Failed to process audio message' });
+      }
+    },
+  );
+
+  // Memory settings endpoints
+  app.get('/api/memory/settings', authMiddleware, (_req, res) => {
+    res.json({ limits: getLimits() });
+  });
+
+  app.get('/api/memory/context', authMiddleware, (_req, res) => {
+    const content = getMemoryContextContent();
+    res.json({ content: content || '' });
+  });
+
+  app.put('/api/memory/settings', authMiddleware, (req, res) => {
+    const { limits } = req.body;
+    if (!limits || typeof limits !== 'object') {
+      return res.status(400).json({ error: 'limits object required' });
+    }
+    const merged = saveLimits(limits);
+    res.json({ ok: true, limits: merged });
+  });
+
+  // Memory testing/debugging endpoints
+  app.get('/api/memory/status', authMiddleware, (_req, res) => {
+    res.json(getProcessingStatus());
+  });
+
+  app.post('/api/memory/feed', authMiddleware, (req, res) => {
+    const { channel, conversation, user_message, assistant_response } = req.body;
+    if (!user_message || !assistant_response) {
+      return res.status(400).json({ error: 'user_message and assistant_response required' });
+    }
+    feedExchange({
+      channel: channel || 'test',
+      conversation_name: conversation || 'Test',
+      user_message,
+      assistant_response,
+      timestamp: new Date().toISOString(),
+    });
+    res.json({ ok: true, status: getProcessingStatus() });
+  });
+
+  app.post('/api/memory/wipe', authMiddleware, async (_req, res) => {
+    try {
+      await resetContextAgent();
+      res.json({ ok: true, message: 'Memory wiped — clean state' });
     } catch (err) {
-      logger.error({ err, jid }, 'Failed to send message via web API');
-      res.status(500).json({ error: 'Failed to send message' });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
-  // Create a new PWA conversation
-  app.post('/api/conversations', authMiddleware, (req, res) => {
-    const { name } = req.body;
-    const config = loadChannelsConfig();
-
-    if (!config.channels.pwa?.standalone) {
-      return res.status(400).json({ error: 'PWA standalone mode not enabled' });
-    }
-
-    const conversation = createPWAConversation(name);
-    res.json({
-      jid: conversation.id,
-      name: conversation.name,
-      folder: `pwa-${conversation.id}`,
-      lastActivity: conversation.lastActivity,
-      type: 'pwa',
-    });
+  app.get('/api/memory/traces', authMiddleware, (req, res) => {
+    const limit = Math.min(parseInt(String(req.query.limit || '50'), 10), 500);
+    const conversation = req.query.conversation ? String(req.query.conversation) : undefined;
+    const traces = readTraces({ limit, conversation });
+    res.json({ traces, count: traces.length });
   });
 
   // Device management endpoints
-  app.get('/api/devices', authMiddleware, (req, res) => {
+  app.get('/api/devices', authMiddleware, (_req, res) => {
     const devices = getAllTokens();
     res.json({ devices });
   });
 
-  app.delete('/api/devices/:token', authMiddleware, (req, res) => {
-    const { token } = req.params;
-    const success = revokeToken(token);
-    res.json({ success });
+  app.delete(
+    '/api/devices/:token',
+    authMiddleware,
+    (req: AuthRequest, res) => {
+      const { token } = req.params;
+      const success = revokeToken(token);
+      if (!success) {
+        return res.status(404).json({ error: 'Device not found' });
+      }
+      res.json({ success: true });
+    },
+  );
+
+  app.post('/api/devices/generate', authMiddleware, (_req, res) => {
+    const token = generateTemporaryToken();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    res.json({ token, expiresAt });
+  });
+
+  // Push subscription endpoints
+  app.post('/api/push/subscribe', authMiddleware, (req: AuthRequest, res) => {
+    const { endpoint, keys } = req.body;
+
+    if (!endpoint || !keys?.p256dh || !keys?.auth) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    savePushSubscription(endpoint, keys.p256dh, keys.auth, req.token);
+    res.json({ success: true });
+  });
+
+  app.delete('/api/push/subscribe', authMiddleware, (req, res) => {
+    const { endpoint } = req.body;
+
+    if (!endpoint) {
+      return res.status(400).json({ error: 'Endpoint is required' });
+    }
+
+    removePushSubscription(endpoint);
+    res.json({ success: true });
   });
 
   // WebSocket connection handling
   wss.on('connection', (ws: WebSocket, req) => {
-    // Verify token from query parameter
     const url = new URL(req.url || '', `http://${req.headers.host}`);
     const token = url.searchParams.get('token');
 
@@ -286,7 +708,6 @@ export function startWebServer(
       try {
         const message: WebMessage = JSON.parse(data.toString());
 
-        // Handle ping/pong for keep-alive
         if (message.type === 'ping') {
           ws.send(JSON.stringify({ type: 'pong' }));
         }
@@ -305,13 +726,39 @@ export function startWebServer(
       connectedClients.delete(ws);
     });
 
-    // Send initial connection success
-    ws.send(JSON.stringify({ type: 'connected', data: { timestamp: new Date().toISOString() } }));
+    ws.send(
+      JSON.stringify({
+        type: 'connected',
+        data: { timestamp: new Date().toISOString() },
+      }),
+    );
   });
 
-  server.listen(port, () => {
+  // SPA fallback - serve index.html for non-API, non-WS routes
+  // No-cache on index.html to always serve latest build
+  app.get('*', (_req, res) => {
+    const indexPath = path.join(pwaDistDir, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).json({ error: 'Not found' });
+    }
+  });
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.error({ port }, `Port ${port} already in use — kill the old process or change PWA_PORT`);
+      process.exit(1);
+    }
+    throw err;
+  });
+
+  server.listen(port, '0.0.0.0', () => {
     logger.info({ port }, 'Web server started');
-    console.log(`\n🌐 PWA Web Interface: http://localhost:${port}\n`);
+    console.log(`\nPWA Web Interface: http://0.0.0.0:${port}\n`);
   });
 
   return server;

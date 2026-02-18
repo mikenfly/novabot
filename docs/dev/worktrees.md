@@ -4,7 +4,7 @@ Développer sur une branche feature sans arrêter l'instance principale.
 
 ## Principe
 
-Chaque worktree a son propre `process.cwd()` donc `store/`, `data/`, `groups/` sont déjà isolés. Le seul conflit possible est le **port réseau** et le **Tailscale Funnel**.
+Chaque worktree a son propre `process.cwd()` donc `store/`, `data/`, `groups/` sont déjà isolés. Le seul conflit possible est le **port réseau**.
 
 Un fichier `.env` dans le worktree permet d'override les valeurs de `channels.yaml` (qui est tracké par git).
 
@@ -36,30 +36,30 @@ WEB_PORT=17284
 ```bash
 # .env
 WEB_PORT=17284
-TAILSCALE_FUNNEL=false
 ```
 
-L'instance tourne sur `http://localhost:17284`, pas de funnel, zéro interférence avec l'instance principale.
+L'instance tourne sur `http://localhost:17284`, zéro interférence avec l'instance principale.
 
-### Avec Tailscale Funnel (test sur mobile)
+### Avec Cloudflare Tunnel (accès distant sécurisé)
 
 ```bash
 # .env
 WEB_PORT=17284
-FUNNEL_PORT=8443
+CLOUDFLARE_TUNNEL_TOKEN=<token-pour-ce-tunnel>
+CLOUDFLARE_TUNNEL_HOSTNAME=nanoclaw-dev.example.com
 ```
 
-L'instance est accessible sur `https://<hostname>.ts.net:8443`. Coexiste avec le funnel principal sur le port 443.
+L'instance est accessible sur `https://nanoclaw-dev.example.com`, protégée par Cloudflare Access (Google OAuth). Chaque worktree a son propre tunnel avec un hostname distinct.
 
-Tailscale supporte les ports HTTPS : **443** (défaut), **8443**, **10000**.
+Voir [docs/setup/cloudflare-tunnel.md](../setup/cloudflare-tunnel.md) pour le setup initial.
 
 ## Variables d'environnement
 
 | Variable | Effet | Défaut |
 |----------|-------|--------|
 | `WEB_PORT` | Port local du serveur HTTP | `channels.yaml` → 17283 |
-| `TAILSCALE_FUNNEL` | Active/désactive le funnel | `channels.yaml` → true |
-| `FUNNEL_PORT` | Port HTTPS externe du funnel | 443 |
+| `CLOUDFLARE_TUNNEL_TOKEN` | Token du tunnel Cloudflare | (aucun, local uniquement) |
+| `CLOUDFLARE_TUNNEL_HOSTNAME` | Hostname public du tunnel | (aucun) |
 
 ## Hiérarchie de config
 

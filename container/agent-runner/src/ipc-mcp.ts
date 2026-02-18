@@ -12,6 +12,7 @@ import { CronExpressionParser } from 'cron-parser';
 const IPC_DIR = '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
 const TASKS_DIR = path.join(IPC_DIR, 'tasks');
+const AUDIO_DIR = path.join(IPC_DIR, 'audio');
 
 export interface IpcMcpContext {
   chatJid: string;
@@ -273,6 +274,122 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
             content: [{
               type: 'text',
               text: `Task ${args.task_id} cancellation requested.`
+            }]
+          };
+        }
+      ),
+
+      tool(
+        'speak',
+        `Send a voice message to the user. Use this when the user is in audio/voice mode.
+Each call creates a separate audio message that the user can play. You can call this multiple times to create multiple audio segments.
+
+Guidelines:
+- Write text that sounds natural when spoken aloud — avoid markdown, code blocks, tables, or special formatting
+- Keep each segment conversational and concise (1-3 sentences ideal)
+- Use the title parameter to give context about what this audio segment covers
+- Put detailed/structured content (code, tables, lists) in your text response instead
+- You can mix speak calls with your normal text response — audio for explanations, text for details`,
+        {
+          text: z.string().describe('The text to convert to speech. Write naturally, as if speaking.'),
+          title: z.string().optional().describe('Short title displayed above the audio player (e.g., "Introduction", "Résumé")')
+        },
+        async (args) => {
+          const data = {
+            type: 'speak',
+            text: args.text,
+            title: args.title || null,
+            chatJid,
+            groupFolder,
+            timestamp: new Date().toISOString()
+          };
+
+          const filename = writeIpcFile(AUDIO_DIR, data);
+
+          return {
+            content: [{
+              type: 'text',
+              text: `Voice message queued (${filename})${args.title ? `: ${args.title}` : ''}`
+            }]
+          };
+        }
+      ),
+
+      tool(
+        'reply',
+        `Send a separate reply message to the user. Each call creates a new message bubble in the conversation.
+Use this when you want to send multiple distinct messages instead of one long response.
+
+Guidelines:
+- Each reply becomes its own message bubble — use for logically separate pieces of content
+- If audio_text is provided, the host will generate TTS and attach it to this reply
+- audio_text should be natural spoken language (no markdown, code, etc.)
+- You can mix reply() calls with your final text response`,
+        {
+          text: z.string().describe('The message text content'),
+          audio_text: z.string().optional().describe('Text to convert to speech for this reply'),
+          audio_title: z.string().optional().describe('Title displayed above the audio player')
+        },
+        async (args) => {
+          const data = {
+            type: 'reply',
+            text: args.text,
+            audio_text: args.audio_text || null,
+            audio_title: args.audio_title || null,
+            chatJid,
+            groupFolder,
+            timestamp: new Date().toISOString()
+          };
+
+          const filename = writeIpcFile(MESSAGES_DIR, data);
+
+          return {
+            content: [{
+              type: 'text',
+              text: `Reply queued (${filename})`
+            }]
+          };
+        }
+      ),
+
+      tool(
+        'diagram',
+        `Create a Mermaid diagram. The diagram will appear as a separate message bubble.
+Use this to visualize architecture, flows, sequences, relationships, etc.
+
+Supported diagram types: flowchart, sequence, class, state, ER, gantt, pie, mindmap, timeline, etc.
+Write standard Mermaid syntax. The diagram will be rendered visually for the user.
+
+Guidelines:
+- Use for any visual representation that aids understanding
+- Keep diagrams focused and readable
+- Add descriptive labels to nodes and edges
+- Use the title parameter for a caption above the diagram`,
+        {
+          code: z.string().describe('Mermaid diagram source code (e.g., "graph LR\\n  A-->B")'),
+          title: z.string().optional().describe('Caption displayed above the diagram')
+        },
+        async (args) => {
+          const text = args.title
+            ? `**${args.title}**\n\n\`\`\`mermaid\n${args.code}\n\`\`\``
+            : `\`\`\`mermaid\n${args.code}\n\`\`\``;
+
+          const data = {
+            type: 'reply',
+            text,
+            audio_text: null,
+            audio_title: null,
+            chatJid,
+            groupFolder,
+            timestamp: new Date().toISOString()
+          };
+
+          const filename = writeIpcFile(MESSAGES_DIR, data);
+
+          return {
+            content: [{
+              type: 'text',
+              text: `Diagram created${args.title ? `: ${args.title}` : ''} (${filename})`
             }]
           };
         }

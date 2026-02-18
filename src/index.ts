@@ -19,11 +19,11 @@ import {
   TIMEZONE,
   TRIGGER_PATTERN,
 } from './config.js';
-import { initializeAuth } from './auth.js';
+import { initializeAuth, ensureAccessToken } from './auth.js';
 import { startWebServer, notifyNewMessage } from './web-server.js';
-import { setupTailscaleFunnel, displayConnectionQR, ensureAccessToken } from './tailscale-funnel.js';
+import { startCloudflareTunnel, stopCloudflareTunnel } from './cloudflare-tunnel.js';
 import { loadChannelsConfig, isChannelEnabled } from './channels-config.js';
-import { createPWAConversation } from './pwa-channel.js';
+import { createPWAConversation, containerManager } from './pwa-channel.js';
 import {
   AvailableGroup,
   runContainerAgent,
@@ -43,6 +43,7 @@ import {
   storeMessage,
   updateChatName,
 } from './db.js';
+import { initContextAgent, feedExchange, shutdownContextAgent } from './memory/context-agent.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { NewMessage, RegisteredGroup, Session } from './types.js';
 import { loadJson, saveJson } from './utils.js';
@@ -226,6 +227,14 @@ async function processMessage(msg: NewMessage): Promise<void> {
   if (response) {
     lastAgentTimestamp[msg.chat_jid] = msg.timestamp;
     await sendMessage(msg.chat_jid, `${ASSISTANT_NAME}: ${response}`);
+
+    feedExchange({
+      channel: `whatsapp-${group.folder}`,
+      conversation_name: group.name,
+      user_message: content,
+      assistant_response: response,
+      timestamp: new Date().toISOString(),
+    });
   }
 }
 
@@ -269,6 +278,7 @@ async function runAgent(
       groupFolder: group.folder,
       chatJid,
       isMain,
+      agentName: ASSISTANT_NAME,
     });
 
     if (output.newSessionId) {
@@ -910,8 +920,11 @@ async function main(): Promise<void> {
   console.log('✓ Configuration chargée');
 
   ensureContainerSystemRunning();
+  cleanupStaleContainers();
   initDatabase();
   logger.info('Database initialized');
+  await initContextAgent();
+  logger.info('Context agent initialized');
   loadState();
   console.log('✓ État chargé');
 
@@ -937,47 +950,30 @@ async function main(): Promise<void> {
     startWebServer(pwaConfig.port, () => registeredGroups, sendMessage);
     console.log('✓ Serveur web démarré');
 
-    // Only show QR code for first setup (no devices yet)
-    if (!hasDevices) {
-      console.log('\n📱 Premier démarrage - Configuration device...\n');
-
-      // Setup Tailscale Funnel if enabled
-      if (pwaConfig.tailscale_funnel) {
-        logger.info('Configuration de l\'accès web...');
-        setupTailscaleFunnel(pwaConfig.port, pwaConfig.funnel_port).then(async (funnelInfo) => {
-          if (funnelInfo) {
-            logger.info('Tailscale Funnel configuré avec succès');
-            const token = await ensureAccessToken();
-            displayConnectionQR(funnelInfo.funnelUrl, token);
-          } else {
-            logger.info('Tailscale Funnel non disponible - accès local');
-            const token = await ensureAccessToken();
-            console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-            console.log(`🌐 PWA disponible sur le réseau local`);
-            console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
-            console.log(`📍 URL: http://localhost:${pwaConfig.port}`);
-            console.log(`🔑 Token: ${token}`);
-            console.log(`\n💡 Pour Tailscale Funnel public:`);
-            console.log(`   sudo tailscale set --operator=$USER`);
-            console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
-          }
-        }).catch(async (err) => {
-          logger.error({ err }, 'Erreur configuration Funnel');
-          const token = await ensureAccessToken();
-          console.log(`\n🌐 PWA: http://localhost:${pwaConfig.port}`);
-          console.log(`🔑 Token: ${token}\n`);
-        });
-      } else {
-        // No Tailscale, just show local URL
-        const token = await ensureAccessToken();
-        console.log(`\n🌐 PWA: http://localhost:${pwaConfig.port}`);
-        console.log(`🔑 Token: ${token}\n`);
+    // Start Cloudflare Tunnel if configured
+    const tunnelHostname = process.env.CLOUDFLARE_TUNNEL_HOSTNAME;
+    if (process.env.CLOUDFLARE_TUNNEL_TOKEN) {
+      const started = await startCloudflareTunnel(pwaConfig.port);
+      if (started && tunnelHostname) {
+        console.log(`\n✅ PWA accessible sur https://${tunnelHostname}`);
+        console.log(`   (Protégée par Cloudflare Access)\n`);
+      } else if (started) {
+        console.log(`\n✅ Cloudflare Tunnel connecté`);
+        console.log(`   Configurez CLOUDFLARE_TUNNEL_HOSTNAME dans .env\n`);
       }
+    }
+
+    if (!hasDevices) {
+      console.log('\n📱 Premier démarrage — Configuration device...\n');
+      const token = ensureAccessToken();
+      const baseUrl = tunnelHostname
+        ? `https://${tunnelHostname}`
+        : `http://localhost:${pwaConfig.port}`;
+      console.log(`🌐 URL: ${baseUrl}`);
+      console.log(`🔑 Token: ${token}\n`);
     } else {
-      // Devices already exist, just show simple message
       console.log(`\n✅ PWA démarrée sur http://localhost:${pwaConfig.port}`);
-      console.log(`📱 ${devices.length} device(s) connecté(s)`);
-      console.log(`\n💡 Pour ajouter un device: npm start -- --generate-token\n`);
+      console.log(`📱 ${devices.length} device(s) connecté(s)\n`);
     }
   }
 
@@ -990,6 +986,41 @@ async function main(): Promise<void> {
   } else {
     logger.info('WhatsApp désactivé');
     console.log('\n💡 Pour activer WhatsApp: modifiez channels.yaml\n');
+  }
+}
+
+// Graceful shutdown: stop all persistent containers
+async function gracefulShutdown(signal: string) {
+  logger.info({ signal }, 'Received shutdown signal, stopping...');
+  try {
+    await shutdownContextAgent();
+    await stopCloudflareTunnel();
+    await containerManager.shutdownAll();
+    logger.info('All services stopped');
+  } catch (err) {
+    logger.error({ err }, 'Error during shutdown');
+  }
+  process.exit(0);
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// Clean up stale containers from previous runs
+function cleanupStaleContainers(): void {
+  try {
+    const output = execSync('docker ps -a --filter "name=nanoclaw-pwa-" --format "{{.Names}}"', {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      encoding: 'utf-8',
+      timeout: 5000,
+    });
+    const stale = output.split('\n').map(n => n.trim()).filter(n => n);
+    if (stale.length > 0) {
+      execSync(`docker rm -f ${stale.join(' ')}`, { stdio: 'pipe', timeout: 10000 });
+      logger.info({ count: stale.length }, 'Cleaned up stale PWA containers');
+    }
+  } catch {
+    // Docker not available or no stale containers — ignore
   }
 }
 

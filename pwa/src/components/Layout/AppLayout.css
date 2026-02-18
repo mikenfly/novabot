@@ -1,0 +1,18 @@
+.app-layout {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  height: 100%;
+  overflow: hidden;
+}
+
+.app-layout--mobile {
+  grid-template-columns: 1fr;
+}
+
+.app-layout__main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+  background: var(--bg-primary);
+}

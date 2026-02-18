@@ -1,0 +1,71 @@
+.file-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+}
+
+.file-modal {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 32px var(--shadow);
+}
+
+.file-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.file-modal__filename {
+  font-weight: 600;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-modal__close {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem;
+}
+
+.file-modal__content {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-modal__iframe {
+  width: 80vw;
+  height: 80vh;
+  border: none;
+}
+
+.file-modal__fallback {
+  padding: 2rem;
+  text-align: center;
+}
+
+.file-modal__fallback a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}

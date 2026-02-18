@@ -32,6 +32,13 @@ export const CONTAINER_MAX_OUTPUT_SIZE = parseInt(
 ); // 10MB default
 export const IPC_POLL_INTERVAL = 1000;
 
+// Persistent container settings
+export const CONTAINER_IDLE_TIMEOUT = parseInt(
+  process.env.CONTAINER_IDLE_TIMEOUT || '300000',
+  10,
+); // 5 min default
+export const CONTAINER_IPC_POLL_INTERVAL = 300; // 300ms for inbox/outbox polling
+
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -48,3 +55,21 @@ export const TIMEZONE =
 
 // Web server port for PWA
 export const WEB_PORT = parseInt(process.env.WEB_PORT || '17283', 10);
+
+// Memory system
+export const MEMORY_DIR = path.resolve(PROJECT_ROOT, 'memory');
+export const MEMORY_DB_PATH = path.join(MEMORY_DIR, 'memory.db');
+
+// Agent models — override per-agent via env
+export const MODEL_MAIN = process.env.MODEL_MAIN || 'claude-sonnet-4-6';
+export const MODEL_RAG = process.env.MODEL_RAG || 'claude-sonnet-4-6';
+export const MODEL_CONTEXT = process.env.MODEL_CONTEXT || 'claude-sonnet-4-6';
+export const MODEL_TITLE = process.env.MODEL_TITLE || 'claude-haiku-4-5';
+
+// RAG agent (agentic pre-search before context agent)
+/** @deprecated Use MODEL_RAG instead */
+export const RAG_MODEL = MODEL_RAG;
+export const RAG_ENABLED = process.env.RAG_ENABLED !== 'false'; // true by default
+export const RAG_TIMEOUT = parseInt(process.env.RAG_TIMEOUT || '60000', 10); // 60s
+export const RAG_RECENT_EXCHANGES_BUFFER = 20; // global circular buffer size
+export const RAG_RECENT_EXCHANGES_PER_CONV = 10; // filtered per-conversation for RAG agent

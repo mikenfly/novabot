@@ -7,13 +7,19 @@
   "scripts": {
     "build": "tsc",
     "start": "node --env-file=.env dist/index.js",
-    "dev": "tsx --env-file=.env src/index.ts",
+    "dev": "tsx watch --env-file=.env src/index.ts",
     "auth": "tsx src/whatsapp-auth.ts",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "build:pwa": "cd pwa && npm run build",
+    "dev:pwa": "cd pwa && npm run dev",
+    "dev:agent": "cd container/agent-runner && npm run dev",
+    "dev:all": "npm run dev & npm run dev:pwa & npm run dev:agent"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.2.29",
+    "@leeoniya/ufuzzy": "^1.0.19",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "better-sqlite3": "^11.8.1",
     "cron-parser": "^5.5.0",

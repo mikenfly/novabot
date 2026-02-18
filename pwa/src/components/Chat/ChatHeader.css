@@ -1,0 +1,39 @@
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0 1.25rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  height: var(--header-height);
+  flex-shrink: 0;
+}
+
+.chat-header__menu {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.chat-header__menu:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.chat-header__info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chat-header__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}

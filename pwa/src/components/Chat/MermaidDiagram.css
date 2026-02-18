@@ -1,0 +1,110 @@
+.mermaid-diagram {
+  overflow-x: auto;
+  margin: 4px 0;
+  cursor: pointer;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.mermaid-loading {
+  color: var(--text-tertiary);
+  padding: 12px;
+  font-style: italic;
+}
+
+.mermaid-error {
+  background: var(--bg-secondary);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin: 8px 0;
+}
+
+.mermaid-error__label {
+  color: var(--error);
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.mermaid-error__code {
+  margin-top: 8px;
+  font-size: 0.85em;
+  color: var(--text-secondary);
+  overflow-x: auto;
+}
+
+/* ─── Fullscreen diagram viewer ─── */
+
+.diagram-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: diagram-viewer-in 0.2s ease-out;
+}
+
+@keyframes diagram-viewer-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.diagram-viewer__close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #fff;
+  font-size: 1.8rem;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: background 0.15s;
+}
+
+.diagram-viewer__close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.diagram-viewer__viewport {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.diagram-viewer__viewport:active {
+  cursor: grabbing;
+}
+
+.diagram-viewer__content {
+  transform-origin: center center;
+  will-change: transform;
+  transition: none;
+}
+
+.diagram-viewer__content svg {
+  /* Let the SVG scale to fill the viewport via viewBox — no fixed dimensions */
+  width: 90vw;
+  height: auto;
+  max-height: 85vh;
+  display: block;
+}

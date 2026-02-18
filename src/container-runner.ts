@@ -2,13 +2,16 @@
  * Container Runner for NanoClaw
  * Spawns agent execution in Apple Container or Docker and handles IPC
  */
-import { exec, execSync, spawn } from 'child_process';
+import { ChildProcess, exec, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
 import {
+  ASSISTANT_NAME,
+  CONTAINER_IDLE_TIMEOUT,
   CONTAINER_IMAGE,
+  CONTAINER_IPC_POLL_INTERVAL,
   CONTAINER_MAX_OUTPUT_SIZE,
   CONTAINER_TIMEOUT,
   DATA_DIR,
@@ -21,6 +24,7 @@ import { RegisteredGroup } from './types.js';
 // Sentinel markers for robust output parsing (must match agent-runner)
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
+const STATUS_PREFIX = '---NANOCLAW_STATUS---';
 
 function getHomeDir(): string {
   const home = process.env.HOME || os.homedir();
@@ -50,10 +54,11 @@ export interface ContainerInput {
   chatJid: string;
   isMain: boolean;
   isScheduledTask?: boolean;
+  agentName?: string;
 }
 
 export interface ContainerOutput {
-  status: 'success' | 'error';
+  status: 'success' | 'error' | 'interrupted';
   result: string | null;
   newSessionId?: string;
   error?: string;
@@ -127,11 +132,28 @@ function buildVolumeMounts(
   const groupIpcDir = path.join(DATA_DIR, 'ipc', group.folder);
   fs.mkdirSync(path.join(groupIpcDir, 'messages'), { recursive: true });
   fs.mkdirSync(path.join(groupIpcDir, 'tasks'), { recursive: true });
+  fs.mkdirSync(path.join(groupIpcDir, 'audio'), { recursive: true });
+  fs.mkdirSync(path.join(groupIpcDir, 'inbox'), { recursive: true });
+  fs.mkdirSync(path.join(groupIpcDir, 'outbox'), { recursive: true });
+  fs.mkdirSync(path.join(groupIpcDir, 'control'), { recursive: true });
   mounts.push({
     hostPath: groupIpcDir,
     containerPath: '/workspace/ipc',
     readonly: false,
   });
+
+  // Dev hot reload: mount agent-runner dist/ for live code updates.
+  // When the local compiled dist exists, it overrides the code baked into the image.
+  // Combined with `npm run dev:agent` (tsc --watch), new containers get
+  // the latest code without needing to rebuild the image.
+  const agentDistDir = path.join(projectRoot, 'container', 'agent-runner', 'dist');
+  if (fs.existsSync(agentDistDir)) {
+    mounts.push({
+      hostPath: agentDistDir,
+      containerPath: '/app/dist',
+      readonly: true,
+    });
+  }
 
   // Environment file directory (workaround for Apple Container -i env var bug)
   // Only expose specific auth variables needed by Claude Code, not the entire .env
@@ -140,7 +162,7 @@ function buildVolumeMounts(
   const envFile = path.join(projectRoot, '.env');
   if (fs.existsSync(envFile)) {
     const envContent = fs.readFileSync(envFile, 'utf-8');
-    const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'];
+    const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'MODEL_MAIN'];
     const filteredLines = envContent.split('\n').filter((line) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) return false;
@@ -196,6 +218,7 @@ function buildContainerArgs(mounts: VolumeMount[], containerName: string): strin
 export async function runContainerAgent(
   group: RegisteredGroup,
   input: ContainerInput,
+  onStatus?: (status: string) => void,
 ): Promise<ContainerOutput> {
   const startTime = Date.now();
 
@@ -246,6 +269,7 @@ export async function runContainerAgent(
     let stderr = '';
     let stdoutTruncated = false;
     let stderrTruncated = false;
+    let stderrLineBuffer = '';
 
     container.stdin.write(JSON.stringify(input));
     container.stdin.end();
@@ -253,6 +277,7 @@ export async function runContainerAgent(
     container.stdout.on('data', (data) => {
       if (stdoutTruncated) return;
       const chunk = data.toString();
+
       const remaining = CONTAINER_MAX_OUTPUT_SIZE - stdout.length;
       if (chunk.length > remaining) {
         stdout += chunk.slice(0, remaining);
@@ -268,10 +293,31 @@ export async function runContainerAgent(
 
     container.stderr.on('data', (data) => {
       const chunk = data.toString();
-      const lines = chunk.trim().split('\n');
+
+      // Line-by-line parsing for STATUS_PREFIX (status lines are on stderr for instant delivery)
+      stderrLineBuffer += chunk;
+      const lines = stderrLineBuffer.split('\n');
+      // Keep the last incomplete line in the buffer
+      stderrLineBuffer = lines.pop() || '';
       for (const line of lines) {
+        if (line.startsWith(STATUS_PREFIX)) {
+          const statusText = line.slice(STATUS_PREFIX.length).trim();
+          if (statusText && onStatus) {
+            let status: string;
+            try {
+              const parsed = JSON.parse(statusText);
+              status = parsed.status || statusText;
+            } catch {
+              status = statusText;
+            }
+            logger.debug({ status }, 'Agent status received');
+            onStatus(status);
+          }
+          continue; // Don't add status lines to stderr log
+        }
         if (line) logger.debug({ container: group.folder }, line);
       }
+
       if (stderrTruncated) return;
       const remaining = CONTAINER_MAX_OUTPUT_SIZE - stderr.length;
       if (chunk.length > remaining) {
@@ -534,4 +580,428 @@ export function writeGroupsSnapshot(
       2,
     ),
   );
+}
+
+// ==================== Persistent Container Manager ====================
+
+interface BootstrapInput {
+  groupFolder: string;
+  chatJid: string;
+  isMain: boolean;
+  agentName?: string;
+}
+
+interface InboxMessage {
+  id: string;
+  prompt: string;
+  audioMode?: boolean;
+  timestamp: string;
+}
+
+interface OutboxMessage {
+  id: string;
+  status: 'success' | 'error' | 'interrupted';
+  result?: string;
+  newSessionId?: string;
+  error?: string;
+  timestamp: string;
+}
+
+interface ContainerHandle {
+  containerId: string;
+  groupFolder: string;
+  state: 'starting' | 'idle' | 'busy';
+  conversationId: string;
+  messageQueue: Array<{
+    inbox: InboxMessage;
+    resolve: (output: ContainerOutput) => void;
+    reject: (err: Error) => void;
+  }>;
+  idleTimer: ReturnType<typeof setTimeout> | null;
+  outboxPollTimer: ReturnType<typeof setTimeout> | null;
+  process: ChildProcess;
+  pendingResolvers: Map<string, {
+    resolve: (output: ContainerOutput) => void;
+    reject: (err: Error) => void;
+  }>;
+  onStatus?: (status: string) => void;
+}
+
+function buildPersistentContainerArgs(mounts: VolumeMount[], containerName: string): string[] {
+  // No --rm: container is cleaned up explicitly by the manager
+  const args: string[] = ['run', '-i', '--name', containerName];
+
+  for (const mount of mounts) {
+    if (mount.readonly) {
+      args.push(
+        '--mount',
+        `type=bind,source=${mount.hostPath},target=${mount.containerPath},readonly`,
+      );
+    } else {
+      args.push('-v', `${mount.hostPath}:${mount.containerPath}`);
+    }
+  }
+
+  args.push(CONTAINER_IMAGE);
+
+  return args;
+}
+
+/**
+ * Manages persistent containers for PWA conversations.
+ * Each conversation gets a long-lived container that processes multiple messages
+ * without the cold-start overhead of spawning a new one each time.
+ */
+export class ContainerManager {
+  private containers = new Map<string, ContainerHandle>();
+
+  /**
+   * Send a message to the agent in a persistent container.
+   * Spawns a new container if none exists for this conversation.
+   * Queues the message if the container is busy.
+   */
+  async sendMessageAndWait(
+    conversationId: string,
+    group: RegisteredGroup,
+    message: { prompt: string; audioMode?: boolean },
+    onStatus?: (status: string) => void,
+  ): Promise<ContainerOutput> {
+    let handle = this.containers.get(conversationId);
+
+    if (!handle) {
+      handle = await this.spawnContainer(conversationId, group, onStatus);
+      this.containers.set(conversationId, handle);
+    }
+
+    // Update status callback (may change between requests)
+    handle.onStatus = onStatus;
+
+    const msgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const inbox: InboxMessage = {
+      id: msgId,
+      prompt: message.prompt,
+      audioMode: message.audioMode,
+      timestamp: new Date().toISOString(),
+    };
+
+    return new Promise<ContainerOutput>((resolve, reject) => {
+      if (handle!.state === 'busy') {
+        // Queue the message and interrupt the current query so the agent
+        // processes the new message promptly (user clearly wants to redirect)
+        handle!.messageQueue.push({ inbox, resolve, reject });
+        this.interruptContainer(conversationId);
+        logger.info({ conversationId, msgId, queueSize: handle!.messageQueue.length }, 'Message queued + interrupt sent (container busy)');
+      } else {
+        // Send immediately
+        handle!.state = 'busy';
+        this.resetIdleTimer(handle!);
+        handle!.pendingResolvers.set(msgId, { resolve, reject });
+        this.writeInbox(handle!, inbox);
+      }
+    });
+  }
+
+  private async spawnContainer(
+    conversationId: string,
+    group: RegisteredGroup,
+    onStatus?: (status: string) => void,
+  ): Promise<ContainerHandle> {
+    const groupDir = path.join(GROUPS_DIR, group.folder);
+    fs.mkdirSync(groupDir, { recursive: true });
+
+    const mounts = buildVolumeMounts(group, false);
+    const safeName = conversationId.replace(/[^a-zA-Z0-9-]/g, '-');
+    const containerName = `nanoclaw-pwa-${safeName}`;
+    const containerArgs = buildPersistentContainerArgs(mounts, containerName);
+
+    // Clean up any pre-existing container with the same name
+    const runtime = detectContainerRuntime();
+    try {
+      execSync(`${runtime} rm -f ${containerName}`, { stdio: 'pipe' });
+    } catch { /* ignore */ }
+
+    // Clean outbox from previous runs
+    const outboxDir = path.join(DATA_DIR, 'ipc', group.folder, 'outbox');
+    try {
+      if (fs.existsSync(outboxDir)) {
+        for (const f of fs.readdirSync(outboxDir)) {
+          fs.unlinkSync(path.join(outboxDir, f));
+        }
+      }
+    } catch { /* ignore */ }
+
+    logger.info({ conversationId, containerName, mountCount: mounts.length }, 'Spawning persistent container');
+
+    const container = spawn(runtime, containerArgs, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    // Write bootstrap JSON to stdin (no prompt — supervisor mode)
+    const bootstrap: BootstrapInput = {
+      groupFolder: group.folder,
+      chatJid: conversationId,
+      isMain: false,
+      agentName: ASSISTANT_NAME,
+    };
+    container.stdin.write(JSON.stringify(bootstrap));
+    container.stdin.end();
+
+    const handle: ContainerHandle = {
+      containerId: containerName,
+      groupFolder: group.folder,
+      state: 'starting',
+      conversationId,
+      messageQueue: [],
+      idleTimer: null,
+      outboxPollTimer: null,
+      process: container,
+      pendingResolvers: new Map(),
+      onStatus,
+    };
+
+    // Watch stderr for status updates
+    let stderrLineBuffer = '';
+    container.stderr.on('data', (data: Buffer) => {
+      const chunk = data.toString();
+      stderrLineBuffer += chunk;
+      const lines = stderrLineBuffer.split('\n');
+      stderrLineBuffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith(STATUS_PREFIX)) {
+          const statusText = line.slice(STATUS_PREFIX.length).trim();
+          if (statusText && handle.onStatus) {
+            let status: string;
+            try {
+              const parsed = JSON.parse(statusText);
+              status = parsed.status || statusText;
+            } catch {
+              status = statusText;
+            }
+            handle.onStatus(status);
+          }
+        } else if (line) {
+          logger.debug({ container: group.folder }, line);
+        }
+      }
+    });
+
+    // Discard stdout (supervisor mode uses file-based IPC, not stdout)
+    container.stdout.on('data', () => {});
+
+    // Handle container exit
+    container.on('close', (code) => {
+      logger.info({ conversationId, containerName, code }, 'Persistent container exited');
+      this.handleContainerExit(handle, code);
+    });
+
+    container.on('error', (err) => {
+      logger.error({ conversationId, containerName, err }, 'Persistent container spawn error');
+      this.handleContainerExit(handle, -1);
+    });
+
+    // Wait for ready signal in outbox
+    await this.waitForReady(handle);
+    handle.state = 'idle';
+    logger.info({ conversationId, containerName }, 'Persistent container ready');
+
+    // Start outbox polling
+    this.startOutboxPoll(handle);
+
+    return handle;
+  }
+
+  private async waitForReady(handle: ContainerHandle): Promise<void> {
+    const outboxDir = path.join(DATA_DIR, 'ipc', handle.groupFolder, 'outbox');
+    const timeout = 60000; // 60s for container startup
+    const start = Date.now();
+
+    while (Date.now() - start < timeout) {
+      try {
+        if (fs.existsSync(outboxDir)) {
+          const files = fs.readdirSync(outboxDir).filter((f) => f.endsWith('.json'));
+          for (const file of files) {
+            const filePath = path.join(outboxDir, file);
+            try {
+              const data: OutboxMessage = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+              if (data.id === 'ready') {
+                fs.unlinkSync(filePath);
+                return;
+              }
+            } catch { /* ignore partial files */ }
+          }
+        }
+      } catch { /* ignore */ }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+
+    // Timeout — kill container
+    handle.process.kill('SIGKILL');
+    throw new Error('Persistent container failed to become ready within 60s');
+  }
+
+  private startOutboxPoll(handle: ContainerHandle): void {
+    const outboxDir = path.join(DATA_DIR, 'ipc', handle.groupFolder, 'outbox');
+
+    const poll = () => {
+      if (!this.containers.has(handle.conversationId)) return;
+
+      try {
+        const files = fs.readdirSync(outboxDir)
+          .filter((f) => f.endsWith('.json'))
+          .sort();
+
+        for (const file of files) {
+          const filePath = path.join(outboxDir, file);
+          try {
+            const data: OutboxMessage = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            fs.unlinkSync(filePath);
+
+            if (data.id === 'ready') continue; // Skip late ready signals
+
+            const resolver = handle.pendingResolvers.get(data.id);
+            if (resolver) {
+              handle.pendingResolvers.delete(data.id);
+              resolver.resolve({
+                status: data.status,
+                result: data.result || null,
+                newSessionId: data.newSessionId,
+                error: data.error,
+              });
+            }
+
+            // Process queued messages
+            handle.state = 'idle';
+            this.processQueue(handle);
+          } catch (err) {
+            logger.error({ file, err }, 'Error processing outbox message');
+            try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+          }
+        }
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logger.error({ err }, 'Error polling outbox');
+        }
+      }
+
+      handle.outboxPollTimer = setTimeout(poll, CONTAINER_IPC_POLL_INTERVAL);
+    };
+
+    handle.outboxPollTimer = setTimeout(poll, CONTAINER_IPC_POLL_INTERVAL);
+  }
+
+  private processQueue(handle: ContainerHandle): void {
+    if (handle.messageQueue.length === 0) {
+      this.resetIdleTimer(handle);
+      return;
+    }
+
+    const next = handle.messageQueue.shift()!;
+    handle.state = 'busy';
+    handle.pendingResolvers.set(next.inbox.id, { resolve: next.resolve, reject: next.reject });
+    this.writeInbox(handle, next.inbox);
+    logger.info({ conversationId: handle.conversationId, msgId: next.inbox.id }, 'Processing queued message');
+  }
+
+  private writeInbox(handle: ContainerHandle, msg: InboxMessage): void {
+    const inboxDir = path.join(DATA_DIR, 'ipc', handle.groupFolder, 'inbox');
+    fs.mkdirSync(inboxDir, { recursive: true });
+
+    // Atomic write
+    const filePath = path.join(inboxDir, `${msg.id}.json`);
+    const tempPath = `${filePath}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(msg));
+    fs.renameSync(tempPath, filePath);
+  }
+
+  private resetIdleTimer(handle: ContainerHandle): void {
+    if (handle.idleTimer) {
+      clearTimeout(handle.idleTimer);
+    }
+    handle.idleTimer = setTimeout(() => {
+      if (handle.state === 'idle') {
+        logger.info({ conversationId: handle.conversationId }, 'Container idle timeout, shutting down');
+        this.shutdownContainer(handle.conversationId);
+      }
+    }, CONTAINER_IDLE_TIMEOUT);
+  }
+
+  private handleContainerExit(handle: ContainerHandle, code: number | null): void {
+    if (handle.idleTimer) clearTimeout(handle.idleTimer);
+    if (handle.outboxPollTimer) clearTimeout(handle.outboxPollTimer);
+
+    // Reject all pending resolvers
+    const exitError = new Error(`Container exited with code ${code}`);
+    for (const [, resolver] of handle.pendingResolvers) {
+      resolver.reject(exitError);
+    }
+    handle.pendingResolvers.clear();
+
+    // Reject queued messages
+    for (const queued of handle.messageQueue) {
+      queued.reject(exitError);
+    }
+    handle.messageQueue = [];
+
+    this.containers.delete(handle.conversationId);
+
+    // Clean up stopped container
+    const runtime = detectContainerRuntime();
+    exec(`${runtime} rm -f ${handle.containerId}`, { timeout: 5000 }, (err) => {
+      if (err) logger.warn({ containerId: handle.containerId, err }, 'Failed to remove stopped container');
+    });
+  }
+
+  /** Write interrupt signal to stop the current agent query */
+  interruptContainer(conversationId: string): void {
+    const handle = this.containers.get(conversationId);
+    if (!handle) return;
+    const controlDir = path.join(DATA_DIR, 'ipc', handle.groupFolder, 'control');
+    fs.mkdirSync(controlDir, { recursive: true });
+    const filePath = path.join(controlDir, 'interrupt.json');
+    const tempPath = `${filePath}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify({ type: 'interrupt', timestamp: new Date().toISOString() }));
+    fs.renameSync(tempPath, filePath);
+    logger.info({ conversationId }, 'Interrupt signal sent');
+  }
+
+  /** Write shutdown signal to gracefully stop the container */
+  shutdownContainer(conversationId: string): void {
+    const handle = this.containers.get(conversationId);
+    if (!handle) return;
+    const controlDir = path.join(DATA_DIR, 'ipc', handle.groupFolder, 'control');
+    fs.mkdirSync(controlDir, { recursive: true });
+    const filePath = path.join(controlDir, 'shutdown.json');
+    const tempPath = `${filePath}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify({ type: 'shutdown', timestamp: new Date().toISOString() }));
+    fs.renameSync(tempPath, filePath);
+    logger.info({ conversationId }, 'Shutdown signal sent');
+  }
+
+  /** Shutdown all persistent containers gracefully */
+  async shutdownAll(): Promise<void> {
+    const promises: Promise<void>[] = [];
+    for (const [convId, handle] of this.containers) {
+      this.shutdownContainer(convId);
+      promises.push(new Promise((resolve) => {
+        handle.process.on('close', () => resolve());
+        // Force kill after 10s
+        setTimeout(() => {
+          if (this.containers.has(convId)) {
+            handle.process.kill('SIGKILL');
+          }
+          resolve();
+        }, 10000);
+      }));
+    }
+    await Promise.all(promises);
+  }
+
+  isContainerActive(conversationId: string): boolean {
+    return this.containers.has(conversationId);
+  }
+
+  isContainerBusy(conversationId: string): boolean {
+    const handle = this.containers.get(conversationId);
+    return handle?.state === 'busy' || false;
+  }
 }

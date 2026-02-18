@@ -103,7 +103,7 @@ nanoclaw/
 │   ├── pwa-channel.ts             # PWA standalone logic
 │   ├── web-server.ts              # Express + WebSocket server
 │   ├── auth.ts                    # Token authentication system
-│   ├── tailscale-funnel.ts        # Auto-configure Tailscale Funnel
+│   ├── cloudflare-tunnel.ts       # Cloudflare Tunnel subprocess management
 │   ├── logger.ts                  # Structured logging (Pino)
 │   └── mount-security.ts          # Mount allowlist validation
 │
@@ -223,7 +223,7 @@ channels:
     enabled: true
     port: 17283
     standalone: true
-    tailscale_funnel: true
+    cloudflare_tunnel: true
   whatsapp:
     enabled: false
     trigger: "@Jimmy"

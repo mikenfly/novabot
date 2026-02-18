@@ -1,0 +1,104 @@
+.message-bubble {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-md);
+  max-width: 82%;
+  animation: msgIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+}
+
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message-bubble--user {
+  background: var(--message-user);
+  border-color: var(--message-user-border);
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.message-bubble--assistant {
+  background: var(--message-assistant);
+  border-color: var(--message-assistant-border);
+  align-self: flex-start;
+}
+
+.message-bubble--pending {
+  opacity: 0.5;
+}
+
+.message-bubble__content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.message-bubble__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.message-bubble__sender {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.message-bubble--user .message-bubble__sender {
+  color: var(--accent-hover);
+}
+
+.message-bubble__time {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+}
+
+.message-bubble__text {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.message-bubble__text pre {
+  background: var(--bg-primary);
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  margin: 0.5rem 0;
+  border: 1px solid var(--border);
+}
+
+.message-bubble__text code {
+  background: var(--bg-primary);
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-size: 0.85em;
+}
+
+.message-bubble__text pre code {
+  background: none;
+  padding: 0;
+}
+
+/* Strip pre styling when it wraps a mermaid diagram */
+.message-bubble__text pre:has(.mermaid-diagram) {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+@media (max-width: 767px) {
+  .message-bubble {
+    max-width: 90%;
+  }
+}

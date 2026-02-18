@@ -1,0 +1,10 @@
+.video-preview {
+  max-height: 200px;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+.video-preview--full {
+  max-height: 80vh;
+  max-width: 85vw;
+}

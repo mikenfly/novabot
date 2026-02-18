@@ -18,7 +18,7 @@ channels:
     enabled: true
     port: 17283
     standalone: true
-    tailscale_funnel: true
+    cloudflare_tunnel: true
   whatsapp:
     enabled: false
     trigger: "@Jimmy"
@@ -240,7 +240,7 @@ User → PWA Frontend (React-like) → WebSocket/HTTP
 - **Real-time communication** : WebSocket pour updates instantanées
 - **Token authentication** : Temporary tokens (5 min) + permanent tokens
 - **Multi-device support** : Plusieurs devices peuvent se connecter
-- **Tailscale Funnel** : Exposition automatique via HTTPS (optionnel)
+- **Cloudflare Tunnel + Access** : Exposition sécurisée via HTTPS avec Google OAuth (optionnel)
 
 ### Message Flow
 
@@ -358,7 +358,7 @@ pwa:
   enabled: true
   port: 17283                  # HTTP server port
   standalone: true            # true = in-memory, false = sync with WhatsApp
-  tailscale_funnel: true      # Auto-configure Tailscale Funnel
+  cloudflare_tunnel: true      # Cloudflare Tunnel (nécessite token dans .env)
 ```
 
 ### Storage

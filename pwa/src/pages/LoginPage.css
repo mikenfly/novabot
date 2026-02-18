@@ -1,0 +1,108 @@
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 1rem;
+  background: radial-gradient(ellipse at 50% 0%, rgba(124, 92, 252, 0.08), transparent 60%);
+}
+
+.login-card {
+  max-width: 380px;
+  width: 100%;
+  padding: 2.5rem 2rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px var(--shadow-lg);
+}
+
+.login-card h1 {
+  text-align: center;
+  margin-bottom: 0.35rem;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, var(--text-primary), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.login-card__subtitle {
+  text-align: center;
+  color: var(--text-tertiary);
+  margin-bottom: 2rem;
+  font-size: 0.88rem;
+}
+
+.login-card__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.login-card__input-group input {
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.92rem;
+  font-family: inherit;
+  outline: none;
+  transition: all var(--transition-fast);
+}
+
+.login-card__input-group input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+.login-card__btn {
+  width: 100%;
+  padding: 0.7rem 1.5rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  letter-spacing: -0.01em;
+}
+
+.login-card__btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: 0 0 24px var(--accent-glow);
+}
+
+.login-card__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.login-card__error {
+  color: var(--error);
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+.login-card__help {
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+  margin-top: 1.25rem;
+  line-height: 1.5;
+}
+
+.login-card__help code {
+  background: var(--bg-tertiary);
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', 'Menlo', monospace;
+  font-size: 0.8rem;
+  color: var(--accent-hover);
+}

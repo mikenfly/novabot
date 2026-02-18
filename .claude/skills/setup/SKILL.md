@@ -155,7 +155,7 @@ channels:
     enabled: true
     port: 3000
     standalone: true
-    tailscale_funnel: true
+    cloudflare_tunnel: true
 
   whatsapp:
     enabled: false
@@ -214,7 +214,7 @@ channels:
     enabled: true
     port: 3000
     standalone: false  # Synchronized with WhatsApp
-    tailscale_funnel: true
+    cloudflare_tunnel: true
 
   whatsapp:
     enabled: true
@@ -306,7 +306,7 @@ Tell them:
 > ✓ NanoClaw is running!
 >
 > You should see:
-> - A QR code (if Tailscale is configured)
+> - A QR code (if configured)
 > - URL: http://localhost:3000
 > - A temporary access token
 >
@@ -586,22 +586,21 @@ tail -f logs/nanoclaw.error.log
 
 ---
 
-## Optional: Tailscale Funnel Setup
+## Optional: Cloudflare Tunnel Setup
 
-**For PWA users who want public HTTPS access.**
+**For PWA users who want secure remote HTTPS access.**
 
-If they see "Tailscale Funnel not configured":
+See `docs/setup/cloudflare-tunnel.md` for the full guide.
 
-```bash
-sudo tailscale set --operator=$USER
-```
-
-Then restart:
-```bash
-npm start
-```
-
-You'll get a permanent HTTPS URL: `https://[machine].tail[xxx].ts.net`
+In short:
+1. Install `cloudflared`
+2. Create a tunnel in Cloudflare Zero Trust dashboard
+3. Add to `.env`:
+   ```bash
+   CLOUDFLARE_TUNNEL_TOKEN=eyJ...
+   CLOUDFLARE_TUNNEL_HOSTNAME=nanoclaw.example.com
+   ```
+4. Restart: `npm start`
 
 ---
 
@@ -629,7 +628,7 @@ Tell them:
 
 Tell them:
 > **Test the PWA:**
-> 1. Open the URL (http://localhost:3000 or your Tailscale URL)
+> 1. Open the URL (http://localhost:3000 or your Cloudflare hostname)
 > 2. Enter the token or scan the QR code
 > 3. Send a message like "hello"
 > 4. You should get a response from the agent
@@ -667,9 +666,9 @@ You should see:
 - Change port in `channels.yaml`: `pwa.port: 3001`
 
 **No QR code for PWA:**
-- Tailscale not configured (optional)
+- Cloudflare Tunnel not configured (optional)
 - App still works on `http://localhost:3000`
-- Setup Tailscale or set `tailscale_funnel: false`
+- See `docs/setup/cloudflare-tunnel.md` for remote access setup
 
 **Service not starting (launchd):**
 - Check `logs/nanoclaw.error.log`

@@ -32,16 +32,20 @@ Example: If your task is "Share the weather forecast", you should:
 
 ## Your Workspace
 
-Files you create are saved in `/workspace/group/`. Use this for notes, research, or anything that should persist.
-
-Your `CLAUDE.md` file in that folder is your memory - update it with important context you want to remember.
+Files you create are saved in `/workspace/group/`. Use this for research, file operations, or tasks that require file output.
 
 ## Memory
 
-The `conversations/` folder contains searchable history of past conversations. Use this to recall context from previous sessions.
+Memory is handled by a separate, centralized system. You are NOT responsible for it.
 
-When you learn something important:
-- Create files for structured data (e.g., `customers.md`, `preferences.md`)
-- Split files larger than 500 lines into folders
-- Add recurring context directly to this CLAUDE.md
-- Always index new memory files at the top of CLAUDE.md
+A dedicated memory agent runs in the background. It reads every exchange from every conversation, extracts what matters, and maintains a structured knowledge base. The relevant context from that base is automatically injected into your prompt at session start and on every message. You don't need to do anything for this to work.
+
+**What this means for you:**
+- When the user shares personal info, preferences, or corrections — just respond naturally. The memory system will pick it up automatically from the conversation.
+- When you need to recall something about the user — it's already in your context. Look for the "Memory Context" section injected into your prompt. If it's not there, you simply don't know it yet.
+- You never need to save, store, update, or manage memory. Not in CLAUDE.md, not in files, not anywhere. It's not your job.
+
+**Do not:**
+- Create or modify any files for the purpose of remembering information across conversations
+- Modify CLAUDE.md for any reason
+- Tell the user you're "saving" or "noting" something — the system does it silently

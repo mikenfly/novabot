@@ -21,3 +21,6 @@ logs/
 .vscode/
 
 agents-sdk-docs
+
+# Memory system data (has its own git repo)
+/memory/

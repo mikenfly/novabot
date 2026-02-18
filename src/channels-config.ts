@@ -15,8 +15,7 @@ export interface ChannelsConfig {
       enabled: boolean;
       port: number;
       standalone: boolean;
-      tailscale_funnel: boolean;
-      funnel_port?: number;
+      cloudflare_tunnel: boolean;
     };
     whatsapp?: {
       enabled: boolean;
@@ -59,11 +58,8 @@ export function loadChannelsConfig(): ChannelsConfig {
       if (process.env.WEB_PORT) {
         config.channels.pwa.port = parseInt(process.env.WEB_PORT, 10);
       }
-      if (process.env.TAILSCALE_FUNNEL !== undefined) {
-        config.channels.pwa.tailscale_funnel = process.env.TAILSCALE_FUNNEL === 'true';
-      }
-      if (process.env.FUNNEL_PORT) {
-        config.channels.pwa.funnel_port = parseInt(process.env.FUNNEL_PORT, 10);
+      if (process.env.CLOUDFLARE_TUNNEL_TOKEN) {
+        config.channels.pwa.cloudflare_tunnel = true;
       }
     }
     logger.info('Channels configuration loaded');
@@ -81,7 +77,7 @@ function getDefaultConfig(): ChannelsConfig {
         enabled: true,
         port: WEB_PORT,
         standalone: true,
-        tailscale_funnel: true,
+        cloudflare_tunnel: false,
       },
       whatsapp: {
         enabled: false,

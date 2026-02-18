@@ -1,0 +1,32 @@
+.code-preview {
+  max-height: 200px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  width: 100%;
+}
+
+.code-preview--full {
+  max-height: 80vh;
+  max-width: 85vw;
+}
+
+.code-preview__header {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-tertiary);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.code-preview__content {
+  padding: 0.75rem;
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.code-preview__content code {
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+}

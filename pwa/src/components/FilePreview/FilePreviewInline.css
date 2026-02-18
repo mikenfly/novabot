@@ -1,0 +1,48 @@
+.file-preview-inline {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  max-width: 100%;
+  margin: 0.5rem 0;
+}
+
+.file-preview-inline__pdf {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.file-preview-inline__icon {
+  background: var(--error);
+  color: var(--text-primary);
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.file-preview-inline__name {
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-preview-inline__download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.file-preview-inline__download:hover {
+  color: var(--accent-hover);
+}

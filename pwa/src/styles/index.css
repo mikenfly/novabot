@@ -1,0 +1,89 @@
+:root {
+  --bg-primary: #0c0c0e;
+  --bg-secondary: #141416;
+  --bg-tertiary: #1c1c20;
+  --bg-elevated: #222228;
+  --text-primary: #ececf0;
+  --text-secondary: #7a7a85;
+  --text-tertiary: #52525a;
+  --accent: #7c5cfc;
+  --accent-hover: #9278ff;
+  --accent-subtle: rgba(124, 92, 252, 0.12);
+  --accent-glow: rgba(124, 92, 252, 0.25);
+  --error: #f55;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+  --message-user: rgba(124, 92, 252, 0.15);
+  --message-user-border: rgba(124, 92, 252, 0.2);
+  --message-assistant: rgba(255, 255, 255, 0.04);
+  --message-assistant-border: rgba(255, 255, 255, 0.06);
+  --shadow: rgba(0, 0, 0, 0.4);
+  --shadow-lg: rgba(0, 0, 0, 0.6);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --sidebar-width: 280px;
+  --header-height: 56px;
+  --transition-fast: 120ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --connection-ok: #34d399;
+  --connection-error: #f55;
+  --connection-warning: #fbbf24;
+  --backdrop: rgba(0, 0, 0, 0.6);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+  --scrollbar-track: transparent;
+  --glass: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.06);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+#root {
+  width: 100vw;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+::selection {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}

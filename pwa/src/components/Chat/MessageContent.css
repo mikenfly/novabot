@@ -1,0 +1,135 @@
+/* Media inline previews */
+.mc-media {
+  display: block;
+  margin: 0.5rem 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.mc-image {
+  max-height: 300px;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+  display: block;
+}
+
+.mc-video {
+  max-height: 300px;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+  display: block;
+}
+
+.mc-media--audio {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: default;
+}
+
+.mc-audio {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+}
+
+.mc-audio__name {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.mc-media--pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.mc-pdf-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  background: var(--error);
+  color: #fff;
+}
+
+.mc-pdf-name {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+/* Table styles */
+.mc-table-wrap {
+  overflow-x: auto;
+  margin: 0.5rem 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.mc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.mc-table th,
+.mc-table td {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.mc-table th {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mc-table td {
+  color: var(--text-secondary);
+}
+
+.mc-table tr:hover td {
+  background: var(--bg-secondary);
+}
+
+/* Blockquote */
+.mc-blockquote {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--accent);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-secondary);
+}
+
+.mc-blockquote p {
+  margin: 0.25rem 0;
+}
+
+.mc-blockquote p:first-child {
+  margin-top: 0;
+}
+
+.mc-blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* Nested blockquotes */
+.mc-blockquote .mc-blockquote {
+  margin: 0.25rem 0;
+}

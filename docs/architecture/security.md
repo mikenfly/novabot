@@ -452,7 +452,7 @@ cat /home/node/.claude/../../../sessions/family-chat/.claude/session.json
 - Token interception (MITM)
 
 **Mitigations** :
-1. **HTTPS enforced** : Tailscale Funnel provides TLS
+1. **HTTPS enforced** : Cloudflare Tunnel provides TLS + Cloudflare Access provides Google OAuth pre-authentication
 2. **Token generation** : 256-bit cryptographically secure random
 3. **Device management** : User can revoke tokens remotely
 4. **No XSS** : Frontend doesn't execute user-provided code
@@ -487,7 +487,7 @@ cat /home/node/.claude/../../../sessions/family-chat/.claude/session.json
 2. **Keep host updated** : Apply security patches to OS/Docker/Node.js
 3. **Monitor logs** : Watch for unusual activity
 4. **Backup regularly** : In case of data corruption/deletion
-5. **Use HTTPS** : Tailscale Funnel or similar for PWA access
+5. **Use HTTPS** : Cloudflare Tunnel + Access for secure PWA access
 6. **Firewall rules** : Block unnecessary inbound connections
 
 ## Compliance Considerations
