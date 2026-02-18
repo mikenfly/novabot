@@ -60,8 +60,15 @@ export const WEB_PORT = parseInt(process.env.WEB_PORT || '17283', 10);
 export const MEMORY_DIR = path.resolve(PROJECT_ROOT, 'memory');
 export const MEMORY_DB_PATH = path.join(MEMORY_DIR, 'memory.db');
 
+// Agent models — override per-agent via env
+export const MODEL_MAIN = process.env.MODEL_MAIN || 'claude-sonnet-4-6';
+export const MODEL_RAG = process.env.MODEL_RAG || 'claude-sonnet-4-6';
+export const MODEL_CONTEXT = process.env.MODEL_CONTEXT || 'claude-sonnet-4-6';
+export const MODEL_TITLE = process.env.MODEL_TITLE || 'claude-haiku-4-5';
+
 // RAG agent (agentic pre-search before context agent)
-export const RAG_MODEL = process.env.RAG_MODEL || 'claude-sonnet-4-5-20250929';
+/** @deprecated Use MODEL_RAG instead */
+export const RAG_MODEL = MODEL_RAG;
 export const RAG_ENABLED = process.env.RAG_ENABLED !== 'false'; // true by default
 export const RAG_TIMEOUT = parseInt(process.env.RAG_TIMEOUT || '60000', 10); // 60s
 export const RAG_RECENT_EXCHANGES_BUFFER = 20; // global circular buffer size

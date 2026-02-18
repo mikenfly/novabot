@@ -13,6 +13,7 @@ import {
   countPWAUserMessages,
   getPWARecentMessages,
 } from './db.js';
+import { MODEL_TITLE } from './config.js';
 import { logger } from './logger.js';
 
 const TITLE_CHECK_INTERVAL = 3;
@@ -52,7 +53,7 @@ export async function evaluateTitle(
     for await (const message of query({
       prompt,
       options: {
-        model: 'claude-haiku-4-5-20251001',
+        model: MODEL_TITLE,
         systemPrompt: SYSTEM_PROMPT,
         allowedTools: [],
         resume: sessionId,

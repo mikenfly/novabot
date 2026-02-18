@@ -448,6 +448,7 @@ async function runAgentQuery(
     for await (const message of query({
       prompt,
       options: {
+        ...(process.env.MODEL_MAIN ? { model: process.env.MODEL_MAIN } : {}),
         cwd: '/workspace/group',
         resume: sessionId,
         allowedTools: [

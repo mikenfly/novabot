@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-import { MEMORY_DIR, GROUPS_DIR, RAG_ENABLED, RAG_RECENT_EXCHANGES_BUFFER, RAG_RECENT_EXCHANGES_PER_CONV } from '../config.js';
+import { MEMORY_DIR, GROUPS_DIR, MODEL_CONTEXT, RAG_ENABLED, RAG_RECENT_EXCHANGES_BUFFER, RAG_RECENT_EXCHANGES_PER_CONV } from '../config.js';
 import {
   initMemoryDatabase,
   checkpointWal,
@@ -38,7 +38,7 @@ function urgentContextPath(conversationId?: string): string {
   const suffix = conversationId ? `-${conversationId}` : '';
   return path.join(URGENT_CONTEXT_DIR, `urgent-context${suffix}.md`);
 }
-const MODEL = 'claude-sonnet-4-5-20250929';
+const MODEL = MODEL_CONTEXT;
 
 let sessionId: string | null = null;
 let processing = false;

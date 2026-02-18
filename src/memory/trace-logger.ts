@@ -8,7 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { MEMORY_DIR, RAG_MODEL } from '../config.js';
+import { MEMORY_DIR, MODEL_RAG } from '../config.js';
 import type { ExchangeMessage } from './types.js';
 
 const TRACES_FILE = path.join(MEMORY_DIR, 'traces.jsonl');
@@ -88,7 +88,7 @@ export function startTrace(
       exchangeTimestamp: exchange.timestamp,
     },
     rag: {
-      model: RAG_MODEL,
+      model: MODEL_RAG,
       durationMs: 0,
       costUsd: null,
       toolCalls: [],
