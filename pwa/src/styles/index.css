@@ -36,6 +36,8 @@
   --scrollbar-track: transparent;
   --glass: rgba(255, 255, 255, 0.03);
   --glass-border: rgba(255, 255, 255, 0.06);
+  --accent-primary: #7c5cfc;
+  --accent-secondary: #9278ff;
 }
 
 *,

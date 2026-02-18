@@ -46,13 +46,18 @@ export default function ConversationItem({ conversation }: ConversationItemProps
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     if (selecting) return;
     e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY });
+    const menuWidth = 170;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth);
+    setContextMenu({ x, y: e.clientY });
   }, [selecting]);
 
   const handleMoreClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setContextMenu({ x: rect.right, y: rect.bottom });
+    // Clamper x pour éviter que le menu déborde du viewport
+    const menuWidth = 170;
+    const x = Math.min(rect.right, window.innerWidth - menuWidth);
+    setContextMenu({ x, y: rect.bottom });
   }, []);
 
   const isActive = activeId === conversation.jid;

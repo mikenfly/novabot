@@ -3,6 +3,7 @@
   flex-direction: column;
   gap: 0.25rem;
   width: 300px;
+  max-width: 100%;
 }
 
 .audio-player__title {
@@ -96,4 +97,37 @@
 .audio-player__speed:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* Mobile: éléments compacts pour tenir dans les bulles étroites */
+@media (max-width: 767px) {
+  .audio-player__controls {
+    gap: 0.35rem;
+    padding: 0.4rem 0.5rem 0.4rem 0.45rem;
+  }
+
+  .audio-player__play {
+    width: 28px;
+    height: 28px;
+  }
+
+  .audio-player__play svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .audio-player__track {
+    height: 28px;
+  }
+
+  .audio-player__time {
+    font-size: 0.68rem;
+    min-width: 2rem;
+  }
+
+  .audio-player__speed {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.25rem;
+    min-width: 1.8rem;
+  }
 }

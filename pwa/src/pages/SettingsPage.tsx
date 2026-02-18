@@ -100,7 +100,7 @@ export default function SettingsPage() {
     const { limits: saved } = await api.put<{ ok: boolean; limits: MemoryLimits }>('/api/memory/settings', { limits });
     setLimits(saved);
     setLimitsSaved(true);
-    setTimeout(() => setLimitsSaved(false), 2000);
+    setTimeout(() => setLimitsSaved(false), 3500);
   }, [limits]);
 
   const handleViewContext = useCallback(async () => {
@@ -188,7 +188,7 @@ export default function SettingsPage() {
                           type="number"
                           min={mn}
                           max={mx}
-                          value={limits[key]}
+                          value={limits[key] ?? mn}
                           onChange={(e) =>
                             setLimits({ ...limits, [key]: Math.max(mn, Math.min(mx, parseInt(e.target.value) || mn)) })
                           }

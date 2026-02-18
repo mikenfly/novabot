@@ -1,6 +1,7 @@
 .new-conversation-btn {
   width: 100%;
-  padding: 0.6rem;
+  padding: 0.75rem;
+  min-height: 44px;
   background: var(--accent);
   color: #fff;
   border: none;
