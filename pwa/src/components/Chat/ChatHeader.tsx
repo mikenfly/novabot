@@ -20,7 +20,7 @@ export default function ChatHeader() {
       )}
       <div className="chat-header__info">
         <ConnectionStatus />
-        <h2 className="chat-header__title">{active?.name ?? 'NanoClaw'}</h2>
+        <h2 className="chat-header__title">{active?.name ?? 'NovaBot'}</h2>
       </div>
     </header>
   );

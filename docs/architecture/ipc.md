@@ -2,7 +2,7 @@
 
 ## Overview
 
-NanoClaw uses file-based IPC to enable communication between containerized agents and the host process. This allows agents to perform privileged operations (send messages, schedule tasks, manage groups) while maintaining security through authorization checks.
+NovaBot uses file-based IPC to enable communication between containerized agents and the host process. This allows agents to perform privileged operations (send messages, schedule tasks, manage groups) while maintaining security through authorization checks.
 
 ## Architecture
 
@@ -295,7 +295,7 @@ async function processIpcTaskCancel(filePath: string, content: any) {
   "jid": "1234567890@g.us",
   "name": "Family Chat",
   "folder": "family-chat",
-  "trigger": "@Jimmy",
+  "trigger": "@Nova",
   "groupFolder": "main"
 }
 ```
@@ -484,7 +484,7 @@ const IS_MAIN = process.env.IS_MAIN === 'true';
 
 export function createIpcMcpServer(): MCPServer {
   const server = new MCPServer({
-    name: 'nanoclaw',
+    name: 'novabot',
     version: '1.0.0'
   });
 
@@ -629,13 +629,13 @@ function startIpcWatcher() {
 **Solution** : Each group only has access to its own IPC directory via mount:
 ```typescript
 {
-  hostPath: '/home/user/nanoclaw/data/ipc/family-chat',
+  hostPath: '/home/user/novabot/data/ipc/family-chat',
   containerPath: '/workspace/ipc',
   readonly: false
 }
 ```
 
-Agent cannot access `/home/user/nanoclaw/data/ipc/main/` because it's not mounted.
+Agent cannot access `/home/user/novabot/data/ipc/main/` because it's not mounted.
 
 ### Path Traversal
 

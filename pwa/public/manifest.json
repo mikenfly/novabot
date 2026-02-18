@@ -1,6 +1,6 @@
 {
-  "name": "NanoClaw",
-  "short_name": "NanoClaw",
+  "name": "NovaBot",
+  "short_name": "NovaBot",
   "description": "Assistant personnel Claude",
   "start_url": "/",
   "display": "standalone",

@@ -1,10 +1,10 @@
-# NanoClaw Documentation
+# NovaBot Documentation
 
 Assistant personnel Claude via messagerie. Simple, sécurisé, extensible.
 
 ## 🎯 Philosophie
 
-### Pourquoi NanoClaw existe
+### Pourquoi NovaBot existe
 
 Alternative légère et sécurisée aux systèmes de bots complexes. Pas de microservices, pas de configurations interminables, pas de processus multiples. Un seul processus Node.js, quelques fichiers sources, facile à comprendre.
 
@@ -63,14 +63,14 @@ PWA + WhatsApp synchronisés
 
 ## 🔗 Liens utiles
 
-- [Repository GitHub](https://github.com/gavrielc/nanoclaw)
-- [Issues & Support](https://github.com/gavrielc/nanoclaw/issues)
+- [Repository GitHub](https://github.com/gavrielc/novabot)
+- [Issues & Support](https://github.com/gavrielc/novabot/issues)
 - [Contribution](../CONTRIBUTING.md)
 
 ## ⚡ Commandes rapides
 
 ```bash
-npm start              # Démarrer NanoClaw
+npm start              # Démarrer NovaBot
 npm run auth          # Authentifier WhatsApp
 npm run build         # Recompiler
 npm run dev           # Mode développement

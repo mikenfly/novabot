@@ -12,8 +12,8 @@ Un fichier `.env` dans le worktree permet d'override les valeurs de `channels.ya
 
 ```bash
 # Créer le worktree
-git worktree add ../nanoclaw-feature feature/ma-branche
-cd ../nanoclaw-feature
+git worktree add ../novabot-feature feature/ma-branche
+cd ../novabot-feature
 
 # Installer les dépendances
 npm install
@@ -46,10 +46,10 @@ L'instance tourne sur `http://localhost:17284`, zéro interférence avec l'insta
 # .env
 WEB_PORT=17284
 CLOUDFLARE_TUNNEL_TOKEN=<token-pour-ce-tunnel>
-CLOUDFLARE_TUNNEL_HOSTNAME=nanoclaw-dev.example.com
+CLOUDFLARE_TUNNEL_HOSTNAME=novabot-dev.example.com
 ```
 
-L'instance est accessible sur `https://nanoclaw-dev.example.com`, protégée par Cloudflare Access (Google OAuth). Chaque worktree a son propre tunnel avec un hostname distinct.
+L'instance est accessible sur `https://novabot-dev.example.com`, protégée par Cloudflare Access (Google OAuth). Chaque worktree a son propre tunnel avec un hostname distinct.
 
 Voir [docs/setup/cloudflare-tunnel.md](../setup/cloudflare-tunnel.md) pour le setup initial.
 

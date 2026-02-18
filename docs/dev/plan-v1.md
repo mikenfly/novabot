@@ -1,6 +1,6 @@
-# Refonte PWA NanoClaw — React + Vite
+# Refonte PWA NovaBot — React + Vite
 
-Refactoring de la PWA NanoClaw depuis une application vanilla JS (571 lignes dans `public/app.js`) vers React 19 + Vite 6 + TypeScript dans `pwa/`, avec persistence SQLite, streaming temps réel du statut agent, previews fichiers, gestion clavier iOS, device management, et service worker Vite-aware. Le backend Express existant (`src/web-server.ts`) sert `pwa/dist/` en production.
+Refactoring de la PWA NovaBot depuis une application vanilla JS (571 lignes dans `public/app.js`) vers React 19 + Vite 6 + TypeScript dans `pwa/`, avec persistence SQLite, streaming temps réel du statut agent, previews fichiers, gestion clavier iOS, device management, et service worker Vite-aware. Le backend Express existant (`src/web-server.ts`) sert `pwa/dist/` en production.
 
 ## Problem Statement
 
@@ -391,7 +391,7 @@ Agent SDK query() loop
 ### 1. Agent Runner (`container/agent-runner/src/index.ts`)
 
 ```typescript
-const STATUS_PREFIX = '---NANOCLAW_STATUS---';
+const STATUS_PREFIX = '---NOVABOT_STATUS---';
 
 function emitStatus(text: string): void {
   const payload = JSON.stringify({ status: text, timestamp: new Date().toISOString() });

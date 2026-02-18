@@ -1,5 +1,5 @@
 /**
- * NanoClaw Agent Runner
+ * NovaBot Agent Runner
  * Runs inside a container. Supports two modes:
  * - One-shot: receives prompt via stdin, runs query, outputs result to stdout, exits
  * - Supervisor: receives bootstrap via stdin, enters loop processing inbox messages via IPC
@@ -77,9 +77,9 @@ async function readStdin(): Promise<string> {
   });
 }
 
-const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
-const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
-const STATUS_PREFIX = '---NANOCLAW_STATUS---';
+const OUTPUT_START_MARKER = '---NOVABOT_OUTPUT_START---';
+const OUTPUT_END_MARKER = '---NOVABOT_OUTPUT_END---';
+const STATUS_PREFIX = '---NOVABOT_STATUS---';
 
 // IPC directories for supervisor mode
 const INBOX_DIR = '/workspace/ipc/inbox';
@@ -100,9 +100,9 @@ function emitStatus(text: string): void {
 }
 
 function craftToolStatus(toolName: string, input: Record<string, any>): string {
-  // MCP tools (prefixed mcp__nanoclaw__)
-  if (toolName.startsWith('mcp__nanoclaw__')) {
-    const mcpTool = toolName.slice('mcp__nanoclaw__'.length);
+  // MCP tools (prefixed mcp__novabot__)
+  if (toolName.startsWith('mcp__novabot__')) {
+    const mcpTool = toolName.slice('mcp__novabot__'.length);
     switch (mcpTool) {
       case 'send_message': return `Envoi d'un message...`;
       case 'speak': return 'Préparation audio...';
@@ -132,8 +132,8 @@ function craftToolStatus(toolName: string, input: Record<string, any>): string {
 }
 
 function craftToolLabel(toolName: string): string {
-  if (toolName.startsWith('mcp__nanoclaw__')) {
-    const mcpTool = toolName.slice('mcp__nanoclaw__'.length);
+  if (toolName.startsWith('mcp__novabot__')) {
+    const mcpTool = toolName.slice('mcp__novabot__'.length);
     switch (mcpTool) {
       case 'send_message': return 'envoi message';
       case 'speak': return 'audio';
@@ -289,7 +289,7 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
   lines.push('');
 
   for (const msg of messages) {
-    const sender = msg.role === 'user' ? 'User' : 'Andy';
+    const sender = msg.role === 'user' ? 'User' : 'Nova';
     const content = msg.content.length > 2000
       ? msg.content.slice(0, 2000) + '...'
       : msg.content;
@@ -455,14 +455,14 @@ async function runAgentQuery(
           'Bash',
           'Read', 'Write', 'Edit', 'Glob', 'Grep',
           'WebSearch', 'WebFetch',
-          'mcp__nanoclaw__*'
+          'mcp__novabot__*'
         ],
         systemPrompt: getAgentSystemPrompt(agentName),
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
         settingSources: [],
         mcpServers: {
-          nanoclaw: ipcMcp
+          novabot: ipcMcp
         },
         hooks: {
           PreToolUse: [{ hooks: [createPreToolUseHook()] }],
@@ -531,7 +531,7 @@ async function runOneShot(input: ContainerInput): Promise<void> {
 
   let prompt = input.prompt;
   if (input.isScheduledTask) {
-    prompt = `[SCHEDULED TASK - You are running automatically, not in response to a user message. Use mcp__nanoclaw__send_message if needed to communicate with the user.]\n\n${input.prompt}`;
+    prompt = `[SCHEDULED TASK - You are running automatically, not in response to a user message. Use mcp__novabot__send_message if needed to communicate with the user.]\n\n${input.prompt}`;
   }
 
   log('Starting agent (one-shot mode)...');

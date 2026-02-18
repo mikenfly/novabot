@@ -12,7 +12,7 @@ export function getAgentSystemPrompt(agentName: string): string {
 
 ## Long Tasks
 
-If a request requires significant work (research, multiple steps, file operations), use \`mcp__nanoclaw__send_message\` to acknowledge first:
+If a request requires significant work (research, multiple steps, file operations), use \`mcp__novabot__send_message\` to acknowledge first:
 
 1. Send a brief message: what you understood and what you'll do
 2. Do the work
@@ -22,7 +22,7 @@ This keeps users informed instead of waiting in silence.
 
 ## Scheduled Tasks
 
-When you run as a scheduled task (no direct user message), use \`mcp__nanoclaw__send_message\` if needed to communicate with the user. Your return value is only logged internally — it won't be sent to the user.
+When you run as a scheduled task (no direct user message), use \`mcp__novabot__send_message\` if needed to communicate with the user. Your return value is only logged internally — it won't be sent to the user.
 
 ## Your Workspace
 

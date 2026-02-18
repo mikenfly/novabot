@@ -1,4 +1,4 @@
-# NanoClaw
+# NovaBot
 
 Personal Claude assistant. See [README.md](README.md) for philosophy and setup. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for architecture decisions.
 
@@ -30,9 +30,9 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 
 ## Worktrees
 
-On peut faire tourner plusieurs instances NanoClaw en parallèle grâce aux git worktrees. Chaque worktree a son propre store, data et groups isolés — il suffit de configurer un port différent via `.env`. Fonctionne en local pur ou avec Cloudflare Tunnel pour accès distant sécurisé.
+On peut faire tourner plusieurs instances NovaBot en parallèle grâce aux git worktrees. Chaque worktree a son propre store, data et groups isolés — il suffit de configurer un port différent via `.env`. Fonctionne en local pur ou avec Cloudflare Tunnel pour accès distant sécurisé.
 
-→ **[docs/dev/worktrees.md](docs/dev/worktrees.md)** pour le setup et les variables d'environnement.
+-> **[docs/dev/worktrees.md](docs/dev/worktrees.md)** pour le setup et les variables d'environnement.
 
 ## Agent Tools
 
@@ -40,13 +40,13 @@ Des outils CLI sont disponibles pour les agents dans les containers :
 
 - **agent-browser** : automatisation de navigateur headless (navigation, inspection d'accessibilité, interaction par refs, screenshots). Permet aux agents de rechercher sur le web, remplir des formulaires, extraire du contenu de pages.
 
-→ **[docs/agent-tools/](docs/agent-tools/)** pour la référence des commandes.
+-> **[docs/agent-tools/](docs/agent-tools/)** pour la référence des commandes.
 
 ## Build with Agent Team
 
 On peut orchestrer des builds complexes avec une équipe d'agents Claude Code coordonnés. Un agent lead répartit le travail, impose des contrats d'interface entre agents (API contracts, schemas), et valide l'intégration end-to-end. Utile pour les projets multi-couches (frontend/backend/DB) où le parallélisme accélère le développement.
 
-→ **[.claude/skills/build-with-agent-team/](/.claude/skills/build-with-agent-team/SKILL.md)** pour le protocole complet.
+-> **[.claude/skills/build-with-agent-team/](/.claude/skills/build-with-agent-team/SKILL.md)** pour le protocole complet.
 
 ## Development
 
@@ -65,11 +65,11 @@ Le développement implique **3 couches** avec chacune son mécanisme de hot relo
 `npm run dev:all` lance les 3 en parallèle.
 
 **Comment ça marche pour les containers :**
-- `tsc --watch` compile `container/agent-runner/src/` → `container/agent-runner/dist/`
+- `tsc --watch` compile `container/agent-runner/src/` -> `container/agent-runner/dist/`
 - Ce `dist/` est monté comme volume dans chaque container Docker, écrasant le code baked dans l'image
 - Les **nouveaux containers** (nouvelle conversation ou après idle timeout de 5 min) chargent le code à jour
 - Les **containers déjà en cours** gardent l'ancien code en mémoire jusqu'à leur redémarrage
-- Pour forcer : `docker ps --format '{{.Names}}' | grep nanoclaw-pwa | xargs -r docker rm -f`
+- Pour forcer : `docker ps --format '{{.Names}}' | grep novabot-pwa | xargs -r docker rm -f`
 
 **`./container/build.sh` n'est nécessaire que pour :**
 - Changements de dépendances (`container/agent-runner/package.json`)
@@ -104,10 +104,10 @@ https://localhost:<vite-port>/?token=$DEV_TOKEN
 **Le serveur tourne déjà en arrière-plan via `npm run dev:all`.** Les 3 couches ont le hot reload. Quand tu modifies du code, les changements sont appliqués automatiquement.
 
 **NE JAMAIS faire :**
-- `npm run dev` / `npm run dev:all` / `npm start` → le serveur tourne déjà
-- `npx tsx src/index.ts` → crée un conflit de port
-- Tuer/relancer le process pour "tester" → le hot reload suffit
-- `./container/build.sh` pour des changements de code → le volume mount suffit
+- `npm run dev` / `npm run dev:all` / `npm start` -> le serveur tourne déjà
+- `npx tsx src/index.ts` -> crée un conflit de port
+- Tuer/relancer le process pour "tester" -> le hot reload suffit
+- `./container/build.sh` pour des changements de code -> le volume mount suffit
 
 **Si tu dois vérifier que le serveur tourne :**
 ```bash
@@ -119,6 +119,6 @@ curl -s http://localhost:$WEB_PORT/api/health | head -1  # Health check
 
 Service management (production) :
 ```bash
-launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
+launchctl load ~/Library/LaunchAgents/com.novabot.plist
+launchctl unload ~/Library/LaunchAgents/com.novabot.plist
 ```

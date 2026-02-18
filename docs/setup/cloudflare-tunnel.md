@@ -1,6 +1,6 @@
 # Cloudflare Tunnel + Access — Setup
 
-Guide one-time pour exposer NanoClaw sur internet de manière sécurisée.
+Guide one-time pour exposer NovaBot sur internet de manière sécurisée.
 
 ## Architecture
 
@@ -8,7 +8,7 @@ Guide one-time pour exposer NanoClaw sur internet de manière sécurisée.
 User → Cloudflare Edge (WAF, rate limit, geo-filter, anti-DDoS)
      → Cloudflare Access (Google OAuth, session cookie)
      → Cloudflare Tunnel (outbound-only, pas de port ouvert)
-     → localhost:WEB_PORT (serveur HTTP NanoClaw)
+     → localhost:WEB_PORT (serveur HTTP NovaBot)
      → Token auth middleware (defense-in-depth)
 ```
 
@@ -37,17 +37,17 @@ cloudflared --version
 
 1. Dashboard → **Zero Trust** → **Networks** → **Tunnels**
 2. **Create a tunnel** → Type : **Cloudflared**
-3. Nommer le tunnel (ex: `nanoclaw-prod`)
+3. Nommer le tunnel (ex: `novabot-prod`)
 4. Copier le **connector token** (commence par `eyJ...`)
 5. Configurer le **Public Hostname** :
-   - Subdomain : `nanoclaw` (ou autre)
+   - Subdomain : `novabot` (ou autre)
    - Domain : votre domaine
    - Service : `http://localhost:17283` (ou votre `WEB_PORT`)
 
 6. Ajouter dans `.env` :
    ```bash
    CLOUDFLARE_TUNNEL_TOKEN=eyJ...
-   CLOUDFLARE_TUNNEL_HOSTNAME=nanoclaw.example.com
+   CLOUDFLARE_TUNNEL_HOSTNAME=novabot.example.com
    ```
 
 ## Étape 3 : Cloudflare Access (Google OAuth)
@@ -66,7 +66,7 @@ cloudflared --version
 
 1. Dashboard → **Zero Trust** → **Access** → **Applications** → **Add an application**
 2. Type : **Self-hosted**
-3. Application domain : `nanoclaw.example.com`
+3. Application domain : `novabot.example.com`
 4. Session duration : **30 days** (ou selon préférence)
 5. Créer une **Policy** :
    - Name : `Google Auth`
@@ -102,13 +102,13 @@ cloudflared --version
 ## Vérification
 
 ```bash
-# Démarrer NanoClaw
+# Démarrer NovaBot
 npm start
 
 # Vérifier les logs — chercher "Cloudflare Tunnel connecté"
 ```
 
-Ouvrir `https://nanoclaw.example.com` → devrait rediriger vers Google OAuth → après connexion, la PWA apparaît.
+Ouvrir `https://novabot.example.com` → devrait rediriger vers Google OAuth → après connexion, la PWA apparaît.
 
 ## Multi-worktrees
 
@@ -116,8 +116,8 @@ Chaque worktree peut avoir son propre tunnel :
 
 | Worktree | Tunnel | Hostname | Token |
 |----------|--------|----------|-------|
-| main | `nanoclaw-prod` | `nanoclaw.example.com` | Token A |
-| feature branch | `nanoclaw-dev` | `nanoclaw-dev.example.com` | Token B |
+| main | `novabot-prod` | `novabot.example.com` | Token A |
+| feature branch | `novabot-dev` | `novabot-dev.example.com` | Token B |
 
 Créez un tunnel séparé dans le dashboard pour chaque worktree, avec un hostname et un token distincts.
 
@@ -129,7 +129,7 @@ Créez un tunnel séparé dans le dashboard pour chaque worktree, avec un hostna
 
 **Tunnel ne se connecte pas** :
 - Vérifier le token : `cloudflared tunnel run --token <TOKEN>` manuellement
-- Vérifier les logs NanoClaw pour les erreurs
+- Vérifier les logs NovaBot pour les erreurs
 
 **Google OAuth ne redirige pas** :
 - Vérifier l'URI de redirection dans Google Cloud Console

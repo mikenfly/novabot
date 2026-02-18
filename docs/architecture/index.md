@@ -33,8 +33,8 @@ Lisez [Security](security.md) pour comprendre le modèle de sécurité.
 ### Setup développement
 
 ```bash
-git clone https://github.com/gavrielc/nanoclaw.git
-cd nanoclaw
+git clone https://github.com/gavrielc/novabot.git
+cd novabot
 npm install
 npm run build
 npm run dev    # Hot reload

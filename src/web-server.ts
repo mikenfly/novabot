@@ -4,7 +4,6 @@ import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { getAllChats, getMessagesSince } from './db.js';
 import {
   exchangeTemporaryToken,
   verifyToken,
@@ -17,7 +16,6 @@ import { getLimits, saveLimits, getMemoryContextContent } from './memory/generat
 import { feedExchange, getProcessingStatus, resetContextAgent } from './memory/context-agent.js';
 import { readTraces } from './memory/trace-logger.js';
 import { logger } from './logger.js';
-import { loadChannelsConfig } from './channels-config.js';
 import {
   createPWAConversation,
   getAllPWAConversations,
@@ -66,11 +64,7 @@ function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   next();
 }
 
-export function startWebServer(
-  port: number,
-  registeredGroups: () => Record<string, any>,
-  sendMessageCallback: (jid: string, text: string) => Promise<void>,
-): http.Server {
+export function startWebServer(port: number): http.Server {
   const app = express();
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -122,38 +116,13 @@ export function startWebServer(
   });
 
   // List all conversations
-  app.get('/api/conversations', authMiddleware, (req, res) => {
-    const config = loadChannelsConfig();
-    const conversations: any[] = [];
-
-    // PWA conversations
-    if (config.channels.pwa?.standalone) {
-      conversations.push(...getAllPWAConversations());
-    } else {
-      // WhatsApp groups
-      const groups = registeredGroups();
-      const chats = getAllChats();
-
-      conversations.push(
-        ...Object.entries(groups).map(([jid, group]: [string, any]) => {
-          const chat = chats.find((c) => c.jid === jid);
-          return {
-            jid,
-            name: group.name,
-            folder: group.folder,
-            lastActivity: chat?.last_message_time || group.added_at,
-            type: 'whatsapp',
-          };
-        }),
-      );
-    }
-
+  app.get('/api/conversations', authMiddleware, (_req, res) => {
+    const conversations = getAllPWAConversations();
     conversations.sort(
       (a, b) =>
         new Date(b.lastActivity).getTime() -
         new Date(a.lastActivity).getTime(),
     );
-
     res.json({ conversations });
   });
 
@@ -182,29 +151,14 @@ export function startWebServer(
     (req: AuthRequest, res) => {
       const { id } = req.params;
       const { since } = req.query;
-      const config = loadChannelsConfig();
 
-      // PWA conversation
-      if (config.channels.pwa?.standalone && id.startsWith('pwa-')) {
-        const conversation = getPWAConversation(id);
-        if (!conversation) {
-          return res.status(404).json({ error: 'Conversation not found' });
-        }
-
-        const sinceStr = typeof since === 'string' ? since : undefined;
-        const messages = getPWAMessages(id, sinceStr);
-        res.json({ messages });
-        return;
-      }
-
-      // WhatsApp
-      const groups = registeredGroups();
-      if (!groups[id]) {
+      const conversation = getPWAConversation(id);
+      if (!conversation) {
         return res.status(404).json({ error: 'Conversation not found' });
       }
 
-      const sinceTimestamp = typeof since === 'string' ? since : '';
-      const messages = getMessagesSince(id, sinceTimestamp, ASSISTANT_NAME);
+      const sinceStr = typeof since === 'string' ? since : undefined;
+      const messages = getPWAMessages(id, sinceStr);
       res.json({ messages });
     },
   );
@@ -215,61 +169,25 @@ export function startWebServer(
     authMiddleware,
     async (req: AuthRequest, res) => {
       const { id } = req.params;
-      let { content, audioMode } = req.body;
+      const { content, audioMode } = req.body;
 
       if (!content || typeof content !== 'string') {
         return res.status(400).json({ error: 'Content is required' });
       }
 
-      const config = loadChannelsConfig();
-
       try {
-        // PWA conversation
-        if (config.channels.pwa?.standalone && id.startsWith('pwa-')) {
-          const conversation = getPWAConversation(id);
-          if (!conversation) {
-            return res.status(404).json({ error: 'Conversation not found' });
-          }
-
-          const userMsgId = generatePWAMessageId();
-
-          // Don't broadcast user message - the sending client already has it
-          // as a pending message. Other clients will see it on next fetch.
-
-          // Return immediately, agent response arrives via WebSocket
-          res.json({ success: true, messageId: userMsgId });
-
-          // Run agent in background
-          runAgentAndBroadcast(id, content, !!audioMode);
-
-          return;
-        }
-
-        // WhatsApp mode
-        const groups = registeredGroups();
-        const group = groups[id];
-        if (!group) {
+        const conversation = getPWAConversation(id);
+        if (!conversation) {
           return res.status(404).json({ error: 'Conversation not found' });
         }
 
-        const triggerPattern = new RegExp(`^@${ASSISTANT_NAME}\\b`, 'i');
-        if (group.folder !== 'main' && !triggerPattern.test(content)) {
-          content = `@${ASSISTANT_NAME} ${content}`;
-        }
+        const userMsgId = generatePWAMessageId();
 
-        await sendMessageCallback(id, content);
+        // Return immediately, agent response arrives via WebSocket
+        res.json({ success: true, messageId: userMsgId });
 
-        broadcastToClients({
-          type: 'message',
-          data: {
-            chat_jid: id,
-            sender_name: 'You',
-            content,
-            timestamp: new Date().toISOString(),
-          },
-        });
-
-        res.json({ success: true });
+        // Run agent in background
+        runAgentAndBroadcast(id, content, !!audioMode);
       } catch (err) {
         logger.error({ err, id }, 'Failed to send message via web API');
         res.status(500).json({ error: 'Internal server error' });
@@ -422,8 +340,6 @@ export function startWebServer(
   );
 
   // --- Helper: run agent and broadcast results (text + audio messages) ---
-  // Reply messages are broadcast in real-time via the watcher callback.
-  // Only the final main message is broadcast here after the agent finishes.
   function runAgentAndBroadcast(conversationId: string, content: string, audioMode: boolean, skipUserMessage?: boolean) {
     sendToPWAAgent(
       conversationId,
@@ -441,7 +357,7 @@ export function startWebServer(
       },
       audioMode,
       skipUserMessage,
-      // Real-time reply callback: broadcast each reply immediately as it arrives
+      // Real-time reply callback
       (reply) => {
         broadcastToClients({
           type: 'message',
@@ -462,8 +378,6 @@ export function startWebServer(
             data: { jid: conversationId, name: renamedTo },
           });
         }
-        // Empty response = interrupted or already sent via reply IPC.
-        // Always send 'done' status so the typing indicator clears.
         if (!response) {
           broadcastToClients({
             type: 'agent_status',
@@ -473,14 +387,12 @@ export function startWebServer(
               timestamp: new Date().toISOString(),
             },
           });
-          // Still evaluate title (conversation may have progressed via IPC replies)
           maybeEvaluateTitle(conversationId, (id, name) => {
             broadcastToClients({ type: 'conversation_renamed', data: { jid: id, name } });
           }).catch((err) => logger.error({ err, conversationId }, 'Title agent error'));
           return;
         }
 
-        // Broadcast main (final) message with text + speak audio segments
         broadcastToClients({
           type: 'message',
           data: {
@@ -500,7 +412,6 @@ export function startWebServer(
           },
         });
 
-        // Async title evaluation (non-blocking, fire-and-forget)
         maybeEvaluateTitle(conversationId, (id, name) => {
           broadcastToClients({ type: 'conversation_renamed', data: { jid: id, name } });
         }).catch((err) => logger.error({ err, conversationId }, 'Title agent error'));
@@ -508,7 +419,6 @@ export function startWebServer(
       .catch((err) => {
         logger.error({ err, conversationId }, 'PWA agent error');
 
-        // Send an error message so the user gets visible feedback
         const errorText = 'Désolé, une erreur est survenue. Réessayez.';
         const errorMsgId = generatePWAMessageId();
         addPWAMessage(errorMsgId, conversationId, 'assistant', errorText);
@@ -538,7 +448,6 @@ export function startWebServer(
     '/api/conversations/:id/audio',
     express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '10mb' }),
     (req: AuthRequest, res, next) => {
-      // Auth via query param (simpler for FormData/blob uploads) or header
       const queryToken = req.query.token as string | undefined;
       if (queryToken && verifyToken(queryToken)) {
         req.token = queryToken;
@@ -548,9 +457,8 @@ export function startWebServer(
     },
     async (req: AuthRequest, res) => {
       const { id } = req.params;
-      const config = loadChannelsConfig();
 
-      if (!config.channels.pwa?.standalone || !id.startsWith('pwa-')) {
+      if (!id.startsWith('pwa-')) {
         return res.status(400).json({ error: 'Audio messages only supported for PWA conversations' });
       }
 
@@ -564,16 +472,13 @@ export function startWebServer(
       }
 
       try {
-        // Save audio to temp file for Whisper
-        const tmpFile = path.join(os.tmpdir(), `nanoclaw-audio-${crypto.randomBytes(6).toString('hex')}.webm`);
+        const tmpFile = path.join(os.tmpdir(), `novabot-audio-${crypto.randomBytes(6).toString('hex')}.webm`);
         fs.writeFileSync(tmpFile, req.body);
 
-        // Transcribe with Whisper
         logger.info({ conversationId: id, size: req.body.length }, 'Transcribing audio message');
         const transcription = await transcribeAudio(tmpFile);
         logger.info({ conversationId: id, textLength: transcription.length }, 'Audio transcribed');
 
-        // Save audio permanently to group dir
         const audioFilename = `user-${Date.now()}-${crypto.randomBytes(3).toString('hex')}.webm`;
         const groupAudioDir = path.join(GROUPS_DIR, conversation.folder, 'audio');
         fs.mkdirSync(groupAudioDir, { recursive: true });
@@ -582,14 +487,11 @@ export function startWebServer(
 
         const audioUrl = `audio/${audioFilename}`;
 
-        // Create user message with transcription + audio
         const userMsgId = generatePWAMessageId();
         addPWAMessage(userMsgId, id, 'user', transcription, audioUrl);
 
-        // Return immediately
         res.json({ success: true, messageId: userMsgId, transcription, audioUrl });
 
-        // Show user message to other clients
         broadcastToClients({
           type: 'message',
           data: {
@@ -602,7 +504,6 @@ export function startWebServer(
           },
         });
 
-        // Run agent with audio mode
         runAgentAndBroadcast(id, transcription, true, true);
       } catch (err) {
         logger.error({ err, conversationId: id }, 'Audio message processing failed');
@@ -758,7 +659,6 @@ export function startWebServer(
   });
 
   // SPA fallback - serve index.html for non-API, non-WS routes
-  // No-cache on index.html to always serve latest build
   app.get('*', (_req, res) => {
     const indexPath = path.join(pwaDistDir, 'index.html');
     if (fs.existsSync(indexPath)) {
@@ -773,7 +673,7 @@ export function startWebServer(
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
-      logger.error({ port }, `Port ${port} already in use — kill the old process or change PWA_PORT`);
+      logger.error({ port }, `Port ${port} already in use — kill the old process or change WEB_PORT`);
       process.exit(1);
     }
     throw err;

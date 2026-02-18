@@ -55,7 +55,7 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <h1>NanoClaw</h1>
+        <h1>NovaBot</h1>
         <p className="login-card__subtitle">Assistant personnel Claude</p>
         <form
           className="login-card__form"
@@ -80,7 +80,7 @@ export default function LoginPage() {
           {error && <p className="login-card__error">{error}</p>}
         </form>
         <p className="login-card__help">
-          Generez un token avec <code>nanoclaw token</code> ou scannez le QR code.
+          Generez un token avec <code>novabot token</code> ou scannez le QR code.
         </p>
       </div>
     </div>

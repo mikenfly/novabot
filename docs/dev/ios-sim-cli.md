@@ -83,8 +83,8 @@ Un fichier `.sim-context.json` à la racine du projet stocke l'état courant :
 {
   "udid": "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
   "device_name": "iPhone 16 Pro",
-  "bundle_id": "com.nanoclaw.app",
-  "scheme": "NanoClawApp",
+  "bundle_id": "com.novabot.app",
+  "scheme": "NovaBotApp",
   "project_path": "/path/to/MyApp.xcodeproj",
   "workspace_path": null
 }
@@ -209,7 +209,7 @@ Le script principal (`sim`) fait ~200 lignes de bash : parsing des arguments, le
 sim list                          # voir les simulateurs disponibles
 sim boot "iPhone 16 Pro"          # boot + sauvegarde dans le contexte
 sim schemes                       # voir les schemes du projet
-sim build --scheme NanoClawApp    # build (scheme sauvé dans le contexte)
+sim build --scheme NovaBotApp    # build (scheme sauvé dans le contexte)
 sim run                           # install + launch (utilise le contexte)
 ```
 

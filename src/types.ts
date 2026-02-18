@@ -6,7 +6,7 @@ export interface AdditionalMount {
 
 /**
  * Mount Allowlist - Security configuration for additional mounts
- * This file should be stored at ~/.config/nanoclaw/mount-allowlist.json
+ * This file should be stored at ~/.config/novabot/mount-allowlist.json
  * and is NOT mounted into any container, making it tamper-proof from agents.
  */
 export interface MountAllowlist {
@@ -36,22 +36,12 @@ export interface ContainerConfig {
 export interface RegisteredGroup {
   name: string;
   folder: string;
-  trigger: string;
   added_at: string;
   containerConfig?: ContainerConfig;
 }
 
 export interface Session {
   [folder: string]: string;
-}
-
-export interface NewMessage {
-  id: string;
-  chat_jid: string;
-  sender: string;
-  sender_name: string;
-  content: string;
-  timestamp: string;
 }
 
 export interface ScheduledTask {

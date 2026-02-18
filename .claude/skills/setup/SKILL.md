@@ -1,29 +1,13 @@
 ---
 name: setup
-description: Initial NanoClaw setup following the quickstart guide. Choose your interface (PWA/WhatsApp/Both), install dependencies, configure authentication, and start the app. Simple and fast.
+description: Initial NovaBot setup. Install dependencies, configure authentication, build container image, and start the app. Simple and fast.
 ---
 
-# NanoClaw Setup
+# NovaBot Setup
 
-Guide simplifié suivant [docs/quickstart.md](../../docs/quickstart.md).
-
-Run commands automatically. Pause only for user actions (QR code scanning, choices).
+Run commands automatically. Pause only for user actions (choices, config).
 
 **UX:** Use `AskUserQuestion` tool for interactive choices.
-
----
-
-## 0. Choose Your Interface
-
-**Use AskUserQuestion** to ask:
-
-> NanoClaw supports multiple interfaces. Which do you want to use?
->
-> **PWA only** - Modern web interface, no WhatsApp needed (Recommended)
-> **WhatsApp only** - Bot in group chats
-> **Both PWA + WhatsApp** - Best of both worlds
-
-Store their choice - you'll use it to configure `channels.yaml`.
 
 ---
 
@@ -60,7 +44,7 @@ Use Docker (Apple Container is macOS-only):
 
 **If not installed:** Ask the user:
 
-> NanoClaw needs containers for isolated agent execution. Choose one:
+> NovaBot needs containers for isolated agent execution. Choose one:
 >
 > 1. **Apple Container** (recommended) - macOS-native, lightweight
 > 2. **Docker** - Cross-platform
@@ -134,281 +118,72 @@ KEY=$(grep "^ANTHROPIC_API_KEY=" .env | cut -d= -f2)
 Verify (auto-detects runtime):
 ```bash
 if which docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-  echo '{}' | docker run -i --entrypoint /bin/echo nanoclaw-agent:latest "Container OK" || echo "✗ Build failed"
+  echo '{}' | docker run -i --entrypoint /bin/echo novabot-agent:latest "Container OK" || echo "✗ Build failed"
 else
-  echo '{}' | container run -i --entrypoint /bin/echo nanoclaw-agent:latest "Container OK" || echo "✗ Build failed"
+  echo '{}' | container run -i --entrypoint /bin/echo novabot-agent:latest "Container OK" || echo "✗ Build failed"
 fi
 ```
 
 ---
 
-## 5. Configure Channels
-
-Create/update `channels.yaml` based on their choice from step 0.
-
-### If PWA only:
+## 5. Build PWA Frontend
 
 ```bash
-cat > channels.yaml << 'EOF'
-channels:
-  pwa:
-    enabled: true
-    port: 3000
-    standalone: true
-    cloudflare_tunnel: true
-
-  whatsapp:
-    enabled: false
-    trigger: "@Jimmy"
-
-assistant:
-  name: "Jimmy"
-  timezone: "Europe/Paris"
-
-paths:
-  data_dir: "./data"
-  groups_dir: "./groups"
-  store_dir: "./store"
-EOF
-```
-
-Tell them:
-> ✓ Configured PWA standalone mode. You'll get a QR code to connect your phone.
-
-**Skip to step 8.**
-
-### If WhatsApp only:
-
-```bash
-cat > channels.yaml << 'EOF'
-channels:
-  pwa:
-    enabled: false
-
-  whatsapp:
-    enabled: true
-    trigger: "@Jimmy"
-
-assistant:
-  name: "Jimmy"
-  timezone: "Europe/Paris"
-
-paths:
-  data_dir: "./data"
-  groups_dir: "./groups"
-  store_dir: "./store"
-EOF
-```
-
-Tell them:
-> ✓ Configured WhatsApp mode.
-
-**Continue to step 6.**
-
-### If Both:
-
-```bash
-cat > channels.yaml << 'EOF'
-channels:
-  pwa:
-    enabled: true
-    port: 3000
-    standalone: false  # Synchronized with WhatsApp
-    cloudflare_tunnel: true
-
-  whatsapp:
-    enabled: true
-    trigger: "@Jimmy"
-
-assistant:
-  name: "Jimmy"
-  timezone: "Europe/Paris"
-
-paths:
-  data_dir: "./data"
-  groups_dir: "./groups"
-  store_dir: "./store"
-EOF
-```
-
-Tell them:
-> ✓ Configured PWA + WhatsApp synchronized mode.
-
-**Continue to step 6.**
-
----
-
-## 6. Authenticate WhatsApp
-
-**Skip this if user chose "PWA only".**
-
-```bash
-npm run auth
-```
-
-Tell them:
-> A QR code will appear. On your phone:
-> 1. Open WhatsApp
-> 2. Settings → Linked Devices → Link a Device
-> 3. Scan the QR code
-
-Wait for "Successfully authenticated" before continuing.
-
----
-
-## 7. Register Main WhatsApp Channel
-
-**Skip this if user chose "PWA only".**
-
-Ask:
-> Send a message to yourself in WhatsApp (the "Message Yourself" chat).
-> Let me know when done.
-
-After confirmation:
-
-```bash
-timeout 10 npm start || true
-```
-
-Find the JID:
-```bash
-sqlite3 store/messages.db "SELECT DISTINCT chat_jid FROM messages WHERE chat_jid LIKE '%@s.whatsapp.net' ORDER BY timestamp DESC LIMIT 1"
-```
-
-Create `data/registered_groups.json`:
-```json
-{
-  "JID_FROM_ABOVE": {
-    "name": "main",
-    "folder": "main",
-    "trigger": "@Jimmy",
-    "added_at": "CURRENT_ISO_TIMESTAMP"
-  }
-}
-```
-
-Ensure folder exists:
-```bash
-mkdir -p groups/main/logs
+npm run build:pwa
 ```
 
 ---
 
-## 8. Start NanoClaw
+## 6. Generate DEV_TOKEN (Optional)
+
+For development, a stable token avoids re-generating tokens on each restart:
+
+```bash
+DEV_TOKEN=$(openssl rand -hex 32)
+echo "" >> .env
+echo "DEV_TOKEN=$DEV_TOKEN" >> .env
+echo "✓ DEV_TOKEN added to .env"
+```
+
+---
+
+## 7. Start NovaBot
 
 ```bash
 npm start
 ```
 
-### For PWA users:
-
 Tell them:
-> ✓ NanoClaw is running!
+> NovaBot is running!
 >
 > You should see:
-> - A QR code (if configured)
-> - URL: http://localhost:3000
-> - A temporary access token
+> - URL: http://localhost:17283
+> - A temporary access token (or use DEV_TOKEN from .env)
 >
 > **To connect:**
-> 1. Scan the QR code with your phone, OR
-> 2. Open the URL and enter the token
+> Open the URL and enter the token
 >
 > **Install on iOS:**
 > 1. Open in Safari
 > 2. Share → Add to Home Screen
 > 3. Use as native app!
 
-### For WhatsApp users:
-
-Tell them:
-> ✓ NanoClaw is running!
->
-> **Test it:**
-> Send `@Jimmy hello` in your WhatsApp chat.
-
 ---
 
-## Advanced Configuration
-
-The following sections are optional but recommended for production use.
-
----
-
-## 9. Configure Assistant Name (Optional)
-
-**For WhatsApp users who want a custom trigger word.**
-
-Ask the user:
-> What trigger word do you want to use? (default: `@Jimmy`)
->
-> Messages starting with `@TriggerWord` will be sent to Claude.
-
-If they choose something other than `@Jimmy`, update it in these places:
-1. `channels.yaml` - Change `assistant.name` and `whatsapp.trigger`
-2. `groups/main/CLAUDE.md` - Change "# Jimmy" and "You are Jimmy" to the new name
-3. `data/registered_groups.json` - Use `@NewName` as the trigger
-
----
-
-## 10. Understand the Security Model (WhatsApp)
-
-**Skip if using PWA only.**
-
-Before adding more WhatsApp groups, understand the security model.
-
-**Use AskUserQuestion** to present this:
-
-> **Important: Your "main" channel is your admin control portal.**
->
-> The main channel has elevated privileges:
-> - Can see messages from ALL other registered groups
-> - Can manage and delete tasks across all groups
-> - Can write to global memory that all groups can read
-> - Has read-write access to the entire NanoClaw project
->
-> **Recommendation:** Use your personal "Message Yourself" chat or a solo WhatsApp group as your main channel. This ensures only you have admin control.
->
-> **Question:** Which setup will you use for your main channel?
->
-> Options:
-> 1. Personal chat (Message Yourself) - Recommended
-> 2. Solo WhatsApp group (just me)
-> 3. Group with other people (I understand the security implications)
-
-If they choose option 3, ask a follow-up:
-
-> You've chosen a group with other people. This means everyone in that group will have admin privileges over NanoClaw.
->
-> Are you sure you want to proceed? The other members will be able to:
-> - Read messages from your other registered chats
-> - Schedule and manage tasks
-> - Access any directories you've mounted
->
-> Options:
-> 1. Yes, I understand and want to proceed
-> 2. No, let me use a personal chat or solo group instead
-
----
-
-## 11. Configure External Directory Access (Mount Allowlist)
+## 8. Configure External Directory Access (Mount Allowlist)
 
 **Optional but important for security.**
 
 Ask the user:
-> Do you want the agent to be able to access any directories **outside** the NanoClaw project?
+> Do you want the agent to access directories **outside** the NovaBot project?
 >
 > Examples: Git repositories, project folders, documents you want Claude to work on.
->
-> **Note:** This is optional. Without configuration, agents can only access their own group folders.
 
 ### If no:
 
-Create an empty allowlist to make this explicit:
-
 ```bash
-mkdir -p ~/.config/nanoclaw
-cat > ~/.config/nanoclaw/mount-allowlist.json << 'EOF'
+mkdir -p ~/.config/novabot
+cat > ~/.config/novabot/mount-allowlist.json << 'EOF'
 {
   "allowedRoots": [],
   "blockedPatterns": [],
@@ -418,57 +193,19 @@ EOF
 echo "✓ Mount allowlist created - no external directories allowed"
 ```
 
-Skip to the next step.
-
 ### If yes:
 
-#### 11a. Collect Directory Paths
-
-Ask the user:
-> Which directories do you want to allow access to?
->
-> You can specify:
-> - A parent folder like `~/projects` (allows access to anything inside)
-> - Specific paths like `~/repos/my-app`
->
-> List them one per line, or give me a comma-separated list.
-
-For each directory they provide, ask:
-> Should `[directory]` be **read-write** (agents can modify files) or **read-only**?
->
-> Read-write is needed for: code changes, creating files, git commits
-> Read-only is safer for: reference docs, config examples, templates
-
-#### 11b. Configure Non-Main Group Access
-
-Ask the user:
-> Should **non-main groups** (other WhatsApp chats you add later) be restricted to **read-only** access even if read-write is allowed for the directory?
->
-> Recommended: **Yes** - this prevents other groups from modifying files even if you grant them access to a directory.
-
-#### 11c. Create the Allowlist
-
-Create the allowlist file based on their answers:
+Ask which directories and whether read-write or read-only.
 
 ```bash
-mkdir -p ~/.config/nanoclaw
-```
-
-Then write the JSON file. Example for a user who wants `~/projects` (read-write) and `~/docs` (read-only) with non-main read-only:
-
-```bash
-cat > ~/.config/nanoclaw/mount-allowlist.json << 'EOF'
+mkdir -p ~/.config/novabot
+cat > ~/.config/novabot/mount-allowlist.json << 'EOF'
 {
   "allowedRoots": [
     {
       "path": "~/projects",
       "allowReadWrite": true,
       "description": "Development projects"
-    },
-    {
-      "path": "~/docs",
-      "allowReadWrite": false,
-      "description": "Reference documents"
     }
   ],
   "blockedPatterns": [],
@@ -477,58 +214,30 @@ cat > ~/.config/nanoclaw/mount-allowlist.json << 'EOF'
 EOF
 ```
 
-Verify the file:
-
-```bash
-cat ~/.config/nanoclaw/mount-allowlist.json
-```
-
-Tell the user:
-> ✓ Mount allowlist configured. The following directories are now accessible:
-> - `~/projects` (read-write)
-> - `~/docs` (read-only)
->
-> **Security notes:**
-> - Sensitive paths (`.ssh`, `.gnupg`, `.aws`, credentials) are always blocked
-> - This config file is stored outside the project, so agents cannot modify it
-> - Changes require restarting the NanoClaw service
->
-> To grant a group access to a directory, add it to their config in `data/registered_groups.json`:
-> ```json
-> "containerConfig": {
->   "additionalMounts": [
->     { "hostPath": "~/projects/my-app", "containerPath": "my-app", "readonly": false }
->   ]
-> }
-> ```
-
 ---
 
-## 12. Configure launchd Service (macOS Background Service)
+## 9. Configure launchd Service (macOS) or systemd (Linux)
 
-**Optional: Run NanoClaw as a background service on macOS.**
+**Optional: Run NovaBot as a background service.**
 
-**Skip this if:**
-- You're on Linux (use systemd instead)
-- You prefer to run `npm start` manually
-
-Generate the plist file with correct paths automatically:
+### macOS (launchd)
 
 ```bash
 NODE_PATH=$(which node)
 PROJECT_PATH=$(pwd)
 HOME_PATH=$HOME
 
-cat > ~/Library/LaunchAgents/com.nanoclaw.plist << EOF
+cat > ~/Library/LaunchAgents/com.novabot.plist << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.nanoclaw</string>
+    <string>com.novabot</string>
     <key>ProgramArguments</key>
     <array>
         <string>\${NODE_PATH}</string>
+        <string>--env-file=.env</string>
         <string>\${PROJECT_PATH}/dist/index.js</string>
     </array>
     <key>WorkingDirectory</key>
@@ -540,114 +249,72 @@ cat > ~/Library/LaunchAgents/com.nanoclaw.plist << EOF
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:\${HOME_PATH}/.local/bin</string>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:\${HOME_PATH}/.local/bin</string>
         <key>HOME</key>
         <string>\${HOME_PATH}</string>
     </dict>
     <key>StandardOutPath</key>
-    <string>\${PROJECT_PATH}/logs/nanoclaw.log</string>
+    <string>\${PROJECT_PATH}/logs/novabot.log</string>
     <key>StandardErrorPath</key>
-    <string>\${PROJECT_PATH}/logs/nanoclaw.error.log</string>
+    <string>\${PROJECT_PATH}/logs/novabot.error.log</string>
 </dict>
 </plist>
 EOF
 
-echo "✓ Created launchd plist with:"
-echo "  Node: \${NODE_PATH}"
-echo "  Project: \${PROJECT_PATH}"
-```
-
-Build and start the service:
-
-```bash
 npm run build
 mkdir -p logs
-launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
+launchctl load ~/Library/LaunchAgents/com.novabot.plist
+launchctl list | grep novabot
 ```
 
-Verify it's running:
-```bash
-launchctl list | grep nanoclaw
-```
-
-**Useful commands:**
+### Linux (systemd)
 
 ```bash
-# Restart service
-launchctl kickstart -k gui/$(id -u)/com.nanoclaw
+cat > ~/.config/systemd/user/novabot.service << EOF
+[Unit]
+Description=NovaBot Personal Assistant
+After=network.target docker.service
 
-# Stop service
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
+[Service]
+Type=simple
+WorkingDirectory=$(pwd)
+ExecStart=$(which node) --env-file=.env dist/index.js
+Restart=always
+RestartSec=5
 
-# View logs
-tail -f logs/nanoclaw.log
-tail -f logs/nanoclaw.error.log
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable novabot
+systemctl --user start novabot
+systemctl --user status novabot
 ```
 
 ---
 
-## Optional: Cloudflare Tunnel Setup
+## Optional: Cloudflare Tunnel
 
-**For PWA users who want secure remote HTTPS access.**
+For secure remote HTTPS access. See `docs/setup/cloudflare-tunnel.md`.
 
-See `docs/setup/cloudflare-tunnel.md` for the full guide.
-
-In short:
-1. Install `cloudflared`
-2. Create a tunnel in Cloudflare Zero Trust dashboard
-3. Add to `.env`:
-   ```bash
-   CLOUDFLARE_TUNNEL_TOKEN=eyJ...
-   CLOUDFLARE_TUNNEL_HOSTNAME=nanoclaw.example.com
-   ```
-4. Restart: `npm start`
+```bash
+# Add to .env:
+echo "CLOUDFLARE_TUNNEL_TOKEN=eyJ..." >> .env
+echo "CLOUDFLARE_TUNNEL_HOSTNAME=your-domain.com" >> .env
+```
 
 ---
 
 ## Next Steps
 
-Tell them:
-
-> **Setup complete!** 🎉
+> **Setup complete!**
 >
 > **Useful commands:**
-> - `npm start` - Start NanoClaw
-> - `npm run build` - Rebuild after code changes
-> - `/channels` - Change interfaces later
+> - `npm start` - Start NovaBot
+> - `npm run dev:all` - Development mode with hot reload
 > - `/customize` - Add features
->
-> **Documentation:**
-> - `docs/quickstart.md` - Quick reference
-> - `docs/channels.md` - Detailed channel config
-
----
-
-## Test Your Setup
-
-### For PWA users:
-
-Tell them:
-> **Test the PWA:**
-> 1. Open the URL (http://localhost:3000 or your Cloudflare hostname)
-> 2. Enter the token or scan the QR code
-> 3. Send a message like "hello"
-> 4. You should get a response from the agent
-
-### For WhatsApp users:
-
-Tell them:
-> **Test WhatsApp:**
-> Send `@Jimmy hello` (or your custom trigger) in your registered chat.
-
-Check the logs:
-```bash
-tail -f logs/nanoclaw.log
-```
-
-You should see:
-- Message received
-- Container agent starting
-- Response being sent
+> - `/debug` - Troubleshoot issues
 
 ---
 
@@ -658,39 +325,17 @@ You should see:
 - On macOS: `container system start`
 - On Linux: `sudo systemctl start docker`
 
-**WhatsApp won't connect:**
-- Check phone is connected to internet
-- Re-run `npm run auth`
-
-**Port 3000 already in use:**
-- Change port in `channels.yaml`: `pwa.port: 3001`
-
-**No QR code for PWA:**
-- Cloudflare Tunnel not configured (optional)
-- App still works on `http://localhost:3000`
-- See `docs/setup/cloudflare-tunnel.md` for remote access setup
+**Port 17283 already in use:**
+- Change port in `.env`: `WEB_PORT=17284`
 
 **Service not starting (launchd):**
-- Check `logs/nanoclaw.error.log`
-- Verify paths in plist: `cat ~/Library/LaunchAgents/com.nanoclaw.plist`
+- Check `logs/novabot.error.log`
+- Verify paths: `cat ~/Library/LaunchAgents/com.novabot.plist`
 
-**Container agent fails with "Claude Code process exited with code 1":**
-- Ensure the container runtime is running:
-  - Apple Container: `container system start`
-  - Docker: `docker info` (start Docker Desktop on macOS, or `sudo systemctl start docker` on Linux)
-- Check container logs: `cat groups/main/logs/container-*.log | tail -50`
+**Container agent fails:**
+- Ensure runtime is running: `container system start` or `docker info`
+- Check logs: `cat groups/pwa-*/logs/container-*.log | tail -50`
 
 **No response to messages:**
-- Verify the trigger pattern matches (e.g., `@Jimmy` at start of message for WhatsApp)
-- Check that the chat JID is in `data/registered_groups.json` (WhatsApp)
-- Check `logs/nanoclaw.log` for errors
-
-**WhatsApp disconnected:**
-- The service will show a macOS notification
-- Run `npm run auth` to re-authenticate
-- Restart the service: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
-
-**Unload launchd service:**
-```bash
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
-```
+- Check `logs/novabot.log` for errors
+- Verify container image exists: `docker images novabot-agent` or `container images`

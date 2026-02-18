@@ -5,8 +5,8 @@ Guide d'installation en 5 minutes.
 ## Installation
 
 ```bash
-git clone https://github.com/gavrielc/nanoclaw.git
-cd nanoclaw
+git clone https://github.com/gavrielc/novabot.git
+cd novabot
 npm install
 npm run build
 ```
@@ -21,7 +21,7 @@ npm run build
 npm start
 ```
 
-C'est tout ! NanoClaw démarre avec la configuration par défaut (PWA activée).
+C'est tout ! NovaBot démarre avec la configuration par défaut (PWA activée).
 
 **Vous verrez** :
 - ✅ Un QR code pour connexion rapide (si configuré)
@@ -62,7 +62,7 @@ C'est tout ! NanoClaw démarre avec la configuration par défaut (PWA activée).
 
 4. **Dans un groupe WhatsApp** :
    ```
-   @Jimmy bonjour !
+   @Nova bonjour !
    ```
 
 ### Option 3 : Les deux (PWA + WhatsApp)
@@ -98,7 +98,7 @@ Pour un accès HTTPS sécurisé depuis n'importe où (connexion sortante uniquem
 2. Ajoutez le token dans `.env` :
    ```bash
    CLOUDFLARE_TUNNEL_TOKEN=eyJ...
-   CLOUDFLARE_TUNNEL_HOSTNAME=nanoclaw.example.com
+   CLOUDFLARE_TUNNEL_HOSTNAME=novabot.example.com
    ```
 3. Relancez : `npm start`
 
@@ -143,7 +143,7 @@ public/                # Interface PWA
 ## Commandes utiles
 
 ```bash
-npm start              # Démarrer NanoClaw
+npm start              # Démarrer NovaBot
 npm run auth          # Authentifier WhatsApp
 npm run build         # Recompiler après modifications
 npm run dev           # Mode développement (hot reload)

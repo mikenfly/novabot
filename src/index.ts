@@ -1,327 +1,93 @@
-import { exec, execSync } from 'child_process';
+import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-import makeWASocket, {
-  DisconnectReason,
-  WASocket,
-  makeCacheableSignalKeyStore,
-  useMultiFileAuthState,
-} from '@whiskeysockets/baileys';
-
 import {
-  ASSISTANT_NAME,
   DATA_DIR,
   IPC_POLL_INTERVAL,
   MAIN_GROUP_FOLDER,
-  POLL_INTERVAL,
-  STORE_DIR,
   TIMEZONE,
-  TRIGGER_PATTERN,
+  WEB_PORT,
 } from './config.js';
 import { initializeAuth, ensureAccessToken } from './auth.js';
-import { startWebServer, notifyNewMessage } from './web-server.js';
+import { startWebServer } from './web-server.js';
 import { startCloudflareTunnel, stopCloudflareTunnel } from './cloudflare-tunnel.js';
-import { loadChannelsConfig, isChannelEnabled } from './channels-config.js';
-import { createPWAConversation, containerManager } from './pwa-channel.js';
-import {
-  AvailableGroup,
-  runContainerAgent,
-  writeGroupsSnapshot,
-  writeTasksSnapshot,
-} from './container-runner.js';
-import {
-  getAllChats,
-  getAllTasks,
-  getLastGroupSync,
-  getMessagesSince,
-  getNewMessages,
-  getTaskById,
-  initDatabase,
-  setLastGroupSync,
-  storeChatMetadata,
-  storeMessage,
-  updateChatName,
-} from './db.js';
-import { initContextAgent, feedExchange, shutdownContextAgent } from './memory/context-agent.js';
+import { containerManager } from './pwa-channel.js';
+import { initDatabase, createTask, updateTask, deleteTask, getTaskById, getAllTasks } from './db.js';
+import { initContextAgent, shutdownContextAgent } from './memory/context-agent.js';
 import { startSchedulerLoop } from './task-scheduler.js';
-import { NewMessage, RegisteredGroup, Session } from './types.js';
-import { loadJson, saveJson } from './utils.js';
 import { logger } from './logger.js';
 
-const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-let sock: WASocket;
-let lastTimestamp = '';
-let sessions: Session = {};
-let registeredGroups: Record<string, RegisteredGroup> = {};
-let lastAgentTimestamp: Record<string, string> = {};
-// LID to phone number mapping (WhatsApp now sends LID JIDs for self-chats)
-let lidToPhoneMap: Record<string, string> = {};
-// Guards to prevent duplicate loops on WhatsApp reconnect
-let messageLoopRunning = false;
-let ipcWatcherRunning = false;
-let groupSyncTimerStarted = false;
-
-/**
- * Translate a JID from LID format to phone format if we have a mapping.
- * Returns the original JID if no mapping exists.
- */
-function translateJid(jid: string): string {
-  if (!jid.endsWith('@lid')) return jid;
-  const lidUser = jid.split('@')[0].split(':')[0];
-  const phoneJid = lidToPhoneMap[lidUser];
-  if (phoneJid) {
-    logger.debug({ lidJid: jid, phoneJid }, 'Translated LID to phone JID');
-    return phoneJid;
-  }
-  return jid;
-}
-
-async function setTyping(jid: string, isTyping: boolean): Promise<void> {
+function ensureContainerSystemRunning(): void {
+  // Try Docker first (cross-platform)
   try {
-    await sock.sendPresenceUpdate(isTyping ? 'composing' : 'paused', jid);
-  } catch (err) {
-    logger.debug({ jid, err }, 'Failed to update typing status');
-  }
-}
-
-function loadState(): void {
-  const statePath = path.join(DATA_DIR, 'router_state.json');
-  const state = loadJson<{
-    last_timestamp?: string;
-    last_agent_timestamp?: Record<string, string>;
-  }>(statePath, {});
-  lastTimestamp = state.last_timestamp || '';
-  lastAgentTimestamp = state.last_agent_timestamp || {};
-  sessions = loadJson(path.join(DATA_DIR, 'sessions.json'), {});
-  registeredGroups = loadJson(
-    path.join(DATA_DIR, 'registered_groups.json'),
-    {},
-  );
-  logger.info(
-    { groupCount: Object.keys(registeredGroups).length },
-    'State loaded',
-  );
-}
-
-function saveState(): void {
-  saveJson(path.join(DATA_DIR, 'router_state.json'), {
-    last_timestamp: lastTimestamp,
-    last_agent_timestamp: lastAgentTimestamp,
-  });
-  saveJson(path.join(DATA_DIR, 'sessions.json'), sessions);
-}
-
-function registerGroup(jid: string, group: RegisteredGroup): void {
-  registeredGroups[jid] = group;
-  saveJson(path.join(DATA_DIR, 'registered_groups.json'), registeredGroups);
-
-  // Create group folder
-  const groupDir = path.join(DATA_DIR, '..', 'groups', group.folder);
-  fs.mkdirSync(path.join(groupDir, 'logs'), { recursive: true });
-
-  logger.info(
-    { jid, name: group.name, folder: group.folder },
-    'Group registered',
-  );
-}
-
-/**
- * Sync group metadata from WhatsApp.
- * Fetches all participating groups and stores their names in the database.
- * Called on startup, daily, and on-demand via IPC.
- */
-async function syncGroupMetadata(force = false): Promise<void> {
-  // Check if we need to sync (skip if synced recently, unless forced)
-  if (!force) {
-    const lastSync = getLastGroupSync();
-    if (lastSync) {
-      const lastSyncTime = new Date(lastSync).getTime();
-      const now = Date.now();
-      if (now - lastSyncTime < GROUP_SYNC_INTERVAL_MS) {
-        logger.debug({ lastSync }, 'Skipping group sync - synced recently');
+    execSync('docker info', { stdio: 'pipe' });
+    logger.debug('Docker is running');
+    return;
+  } catch {
+    // Docker not available, try Apple Container (macOS only)
+    try {
+      execSync('container system status', { stdio: 'pipe' });
+      logger.debug('Apple Container system already running');
+      return;
+    } catch {
+      logger.info('Starting Apple Container system...');
+      try {
+        execSync('container system start', { stdio: 'pipe', timeout: 30000 });
+        logger.info('Apple Container system started');
         return;
+      } catch (err) {
+        logger.error({ err }, 'Failed to start container runtime');
+        console.error(
+          '\n╔════════════════════════════════════════════════════════════════╗',
+        );
+        console.error(
+          '║  FATAL: No container runtime available                        ║',
+        );
+        console.error(
+          '║                                                                ║',
+        );
+        console.error(
+          '║  NovaBot requires Docker or Apple Container. To fix:          ║',
+        );
+        console.error(
+          '║  - Install Docker: https://docs.docker.com/get-docker/        ║',
+        );
+        console.error(
+          '║  - Or Apple Container: github.com/apple/container/releases    ║',
+        );
+        console.error(
+          '╚════════════════════════════════════════════════════════════════╝\n',
+        );
+        throw new Error('Container runtime is required but not available');
       }
     }
   }
+}
 
+// Clean up stale containers from previous runs
+function cleanupStaleContainers(): void {
   try {
-    logger.info('Syncing group metadata from WhatsApp...');
-    const groups = await sock.groupFetchAllParticipating();
-
-    let count = 0;
-    for (const [jid, metadata] of Object.entries(groups)) {
-      if (metadata.subject) {
-        updateChatName(jid, metadata.subject);
-        count++;
-      }
-    }
-
-    setLastGroupSync();
-    logger.info({ count }, 'Group metadata synced');
-  } catch (err) {
-    logger.error({ err }, 'Failed to sync group metadata');
-  }
-}
-
-/**
- * Get available groups list for the agent.
- * Returns groups ordered by most recent activity.
- */
-function getAvailableGroups(): AvailableGroup[] {
-  const chats = getAllChats();
-  const registeredJids = new Set(Object.keys(registeredGroups));
-
-  return chats
-    .filter((c) => c.jid !== '__group_sync__' && c.jid.endsWith('@g.us'))
-    .map((c) => ({
-      jid: c.jid,
-      name: c.name,
-      lastActivity: c.last_message_time,
-      isRegistered: registeredJids.has(c.jid),
-    }));
-}
-
-async function processMessage(msg: NewMessage): Promise<void> {
-  const group = registeredGroups[msg.chat_jid];
-  if (!group) return;
-
-  const content = msg.content.trim();
-  const isMainGroup = group.folder === MAIN_GROUP_FOLDER;
-
-  // Main group responds to all messages; other groups require trigger prefix
-  if (!isMainGroup && !TRIGGER_PATTERN.test(content)) return;
-
-  // Get all messages since last agent interaction so the session has full context
-  const sinceTimestamp = lastAgentTimestamp[msg.chat_jid] || '';
-  const missedMessages = getMessagesSince(
-    msg.chat_jid,
-    sinceTimestamp,
-    ASSISTANT_NAME,
-  );
-
-  const lines = missedMessages.map((m) => {
-    // Escape XML special characters in content
-    const escapeXml = (s: string) =>
-      s
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    return `<message sender="${escapeXml(m.sender_name)}" time="${m.timestamp}">${escapeXml(m.content)}</message>`;
-  });
-  const prompt = `<messages>\n${lines.join('\n')}\n</messages>`;
-
-  if (!prompt) return;
-
-  logger.info(
-    { group: group.name, messageCount: missedMessages.length },
-    'Processing message',
-  );
-
-  await setTyping(msg.chat_jid, true);
-  const response = await runAgent(group, prompt, msg.chat_jid);
-  await setTyping(msg.chat_jid, false);
-
-  if (response) {
-    lastAgentTimestamp[msg.chat_jid] = msg.timestamp;
-    await sendMessage(msg.chat_jid, `${ASSISTANT_NAME}: ${response}`);
-
-    feedExchange({
-      channel: `whatsapp-${group.folder}`,
-      conversation_name: group.name,
-      user_message: content,
-      assistant_response: response,
-      timestamp: new Date().toISOString(),
+    const output = execSync('docker ps -a --filter "name=novabot-pwa-" --format "{{.Names}}"', {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      encoding: 'utf-8',
+      timeout: 5000,
     });
-  }
-}
-
-async function runAgent(
-  group: RegisteredGroup,
-  prompt: string,
-  chatJid: string,
-): Promise<string | null> {
-  const isMain = group.folder === MAIN_GROUP_FOLDER;
-  const sessionId = sessions[group.folder];
-
-  // Update tasks snapshot for container to read (filtered by group)
-  const tasks = getAllTasks();
-  writeTasksSnapshot(
-    group.folder,
-    isMain,
-    tasks.map((t) => ({
-      id: t.id,
-      groupFolder: t.group_folder,
-      prompt: t.prompt,
-      schedule_type: t.schedule_type,
-      schedule_value: t.schedule_value,
-      status: t.status,
-      next_run: t.next_run,
-    })),
-  );
-
-  // Update available groups snapshot (main group only can see all groups)
-  const availableGroups = getAvailableGroups();
-  writeGroupsSnapshot(
-    group.folder,
-    isMain,
-    availableGroups,
-    new Set(Object.keys(registeredGroups)),
-  );
-
-  try {
-    const output = await runContainerAgent(group, {
-      prompt,
-      sessionId,
-      groupFolder: group.folder,
-      chatJid,
-      isMain,
-      agentName: ASSISTANT_NAME,
-    });
-
-    if (output.newSessionId) {
-      sessions[group.folder] = output.newSessionId;
-      saveJson(path.join(DATA_DIR, 'sessions.json'), sessions);
+    const stale = output.split('\n').map(n => n.trim()).filter(n => n);
+    if (stale.length > 0) {
+      execSync(`docker rm -f ${stale.join(' ')}`, { stdio: 'pipe', timeout: 10000 });
+      logger.info({ count: stale.length }, 'Cleaned up stale PWA containers');
     }
-
-    if (output.status === 'error') {
-      logger.error(
-        { group: group.name, error: output.error },
-        'Container agent error',
-      );
-      return null;
-    }
-
-    return output.result;
-  } catch (err) {
-    logger.error({ group: group.name, err }, 'Agent error');
-    return null;
-  }
-}
-
-async function sendMessage(jid: string, text: string): Promise<void> {
-  try {
-    await sock.sendMessage(jid, { text });
-    logger.info({ jid, length: text.length }, 'Message sent');
-  } catch (err) {
-    logger.error({ jid, err }, 'Failed to send message');
+  } catch {
+    // Docker not available or no stale containers — ignore
   }
 }
 
 function startIpcWatcher(): void {
-  if (ipcWatcherRunning) {
-    logger.debug('IPC watcher already running, skipping duplicate start');
-    return;
-  }
-  ipcWatcherRunning = true;
-
   const ipcBaseDir = path.join(DATA_DIR, 'ipc');
   fs.mkdirSync(ipcBaseDir, { recursive: true });
 
   const processIpcFiles = async () => {
-    // Scan all group IPC directories (identity determined by directory)
     let groupFolders: string[];
     try {
       groupFolders = fs.readdirSync(ipcBaseDir).filter((f) => {
@@ -335,63 +101,7 @@ function startIpcWatcher(): void {
     }
 
     for (const sourceGroup of groupFolders) {
-      const isMain = sourceGroup === MAIN_GROUP_FOLDER;
-      const messagesDir = path.join(ipcBaseDir, sourceGroup, 'messages');
       const tasksDir = path.join(ipcBaseDir, sourceGroup, 'tasks');
-
-      // Process messages from this group's IPC directory
-      try {
-        if (fs.existsSync(messagesDir)) {
-          const messageFiles = fs
-            .readdirSync(messagesDir)
-            .filter((f) => f.endsWith('.json'));
-          for (const file of messageFiles) {
-            const filePath = path.join(messagesDir, file);
-            try {
-              const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-              if (data.type === 'message' && data.chatJid && data.text) {
-                // Authorization: verify this group can send to this chatJid
-                const targetGroup = registeredGroups[data.chatJid];
-                if (
-                  isMain ||
-                  (targetGroup && targetGroup.folder === sourceGroup)
-                ) {
-                  await sendMessage(
-                    data.chatJid,
-                    `${ASSISTANT_NAME}: ${data.text}`,
-                  );
-                  logger.info(
-                    { chatJid: data.chatJid, sourceGroup },
-                    'IPC message sent',
-                  );
-                } else {
-                  logger.warn(
-                    { chatJid: data.chatJid, sourceGroup },
-                    'Unauthorized IPC message attempt blocked',
-                  );
-                }
-              }
-              fs.unlinkSync(filePath);
-            } catch (err) {
-              logger.error(
-                { file, sourceGroup, err },
-                'Error processing IPC message',
-              );
-              const errorDir = path.join(ipcBaseDir, 'errors');
-              fs.mkdirSync(errorDir, { recursive: true });
-              fs.renameSync(
-                filePath,
-                path.join(errorDir, `${sourceGroup}-${file}`),
-              );
-            }
-          }
-        }
-      } catch (err) {
-        logger.error(
-          { err, sourceGroup },
-          'Error reading IPC messages directory',
-        );
-      }
 
       // Process tasks from this group's IPC directory
       try {
@@ -403,8 +113,7 @@ function startIpcWatcher(): void {
             const filePath = path.join(tasksDir, file);
             try {
               const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-              // Pass source group identity to processTaskIpc for authorization
-              await processTaskIpc(data, sourceGroup, isMain);
+              await processTaskIpc(data, sourceGroup);
               fs.unlinkSync(filePath);
             } catch (err) {
               logger.error(
@@ -429,7 +138,7 @@ function startIpcWatcher(): void {
   };
 
   processIpcFiles();
-  logger.info('IPC watcher started (per-group namespaces)');
+  logger.info('IPC watcher started');
 }
 
 async function processTaskIpc(
@@ -442,23 +151,9 @@ async function processTaskIpc(
     context_mode?: string;
     groupFolder?: string;
     chatJid?: string;
-    // For register_group
-    jid?: string;
-    name?: string;
-    folder?: string;
-    trigger?: string;
-    containerConfig?: RegisteredGroup['containerConfig'];
   },
-  sourceGroup: string, // Verified identity from IPC directory
-  isMain: boolean, // Verified from directory path
+  sourceGroup: string,
 ): Promise<void> {
-  // Import db functions dynamically to avoid circular deps
-  const {
-    createTask,
-    updateTask,
-    deleteTask,
-    getTaskById: getTask,
-  } = await import('./db.js');
   const { CronExpressionParser } = await import('cron-parser');
 
   switch (data.type) {
@@ -469,29 +164,7 @@ async function processTaskIpc(
         data.schedule_value &&
         data.groupFolder
       ) {
-        // Authorization: non-main groups can only schedule for themselves
         const targetGroup = data.groupFolder;
-        if (!isMain && targetGroup !== sourceGroup) {
-          logger.warn(
-            { sourceGroup, targetGroup },
-            'Unauthorized schedule_task attempt blocked',
-          );
-          break;
-        }
-
-        // Resolve the correct JID for the target group (don't trust IPC payload)
-        const targetJid = Object.entries(registeredGroups).find(
-          ([, group]) => group.folder === targetGroup,
-        )?.[0];
-
-        if (!targetJid) {
-          logger.warn(
-            { targetGroup },
-            'Cannot schedule task: target group not registered',
-          );
-          break;
-        }
-
         const scheduleType = data.schedule_type as 'cron' | 'interval' | 'once';
 
         let nextRun: string | null = null;
@@ -538,7 +211,7 @@ async function processTaskIpc(
         createTask({
           id: taskId,
           group_folder: targetGroup,
-          chat_jid: targetJid,
+          chat_jid: data.chatJid || '',
           prompt: data.prompt,
           schedule_type: scheduleType,
           schedule_value: data.schedule_value,
@@ -556,17 +229,12 @@ async function processTaskIpc(
 
     case 'pause_task':
       if (data.taskId) {
-        const task = getTask(data.taskId);
-        if (task && (isMain || task.group_folder === sourceGroup)) {
+        const task = getTaskById(data.taskId);
+        if (task) {
           updateTask(data.taskId, { status: 'paused' });
           logger.info(
             { taskId: data.taskId, sourceGroup },
             'Task paused via IPC',
-          );
-        } else {
-          logger.warn(
-            { taskId: data.taskId, sourceGroup },
-            'Unauthorized task pause attempt',
           );
         }
       }
@@ -574,17 +242,12 @@ async function processTaskIpc(
 
     case 'resume_task':
       if (data.taskId) {
-        const task = getTask(data.taskId);
-        if (task && (isMain || task.group_folder === sourceGroup)) {
+        const task = getTaskById(data.taskId);
+        if (task) {
           updateTask(data.taskId, { status: 'active' });
           logger.info(
             { taskId: data.taskId, sourceGroup },
             'Task resumed via IPC',
-          );
-        } else {
-          logger.warn(
-            { taskId: data.taskId, sourceGroup },
-            'Unauthorized task resume attempt',
           );
         }
       }
@@ -592,285 +255,19 @@ async function processTaskIpc(
 
     case 'cancel_task':
       if (data.taskId) {
-        const task = getTask(data.taskId);
-        if (task && (isMain || task.group_folder === sourceGroup)) {
+        const task = getTaskById(data.taskId);
+        if (task) {
           deleteTask(data.taskId);
           logger.info(
             { taskId: data.taskId, sourceGroup },
             'Task cancelled via IPC',
           );
-        } else {
-          logger.warn(
-            { taskId: data.taskId, sourceGroup },
-            'Unauthorized task cancel attempt',
-          );
         }
-      }
-      break;
-
-    case 'refresh_groups':
-      // Only main group can request a refresh
-      if (isMain) {
-        logger.info(
-          { sourceGroup },
-          'Group metadata refresh requested via IPC',
-        );
-        await syncGroupMetadata(true);
-        // Write updated snapshot immediately
-        const availableGroups = getAvailableGroups();
-        const { writeGroupsSnapshot: writeGroups } =
-          await import('./container-runner.js');
-        writeGroups(
-          sourceGroup,
-          true,
-          availableGroups,
-          new Set(Object.keys(registeredGroups)),
-        );
-      } else {
-        logger.warn(
-          { sourceGroup },
-          'Unauthorized refresh_groups attempt blocked',
-        );
-      }
-      break;
-
-    case 'register_group':
-      // Only main group can register new groups
-      if (!isMain) {
-        logger.warn(
-          { sourceGroup },
-          'Unauthorized register_group attempt blocked',
-        );
-        break;
-      }
-      if (data.jid && data.name && data.folder && data.trigger) {
-        registerGroup(data.jid, {
-          name: data.name,
-          folder: data.folder,
-          trigger: data.trigger,
-          added_at: new Date().toISOString(),
-          containerConfig: data.containerConfig,
-        });
-      } else {
-        logger.warn(
-          { data },
-          'Invalid register_group request - missing required fields',
-        );
       }
       break;
 
     default:
       logger.warn({ type: data.type }, 'Unknown IPC task type');
-  }
-}
-
-async function connectWhatsApp(): Promise<void> {
-  const authDir = path.join(STORE_DIR, 'auth');
-  fs.mkdirSync(authDir, { recursive: true });
-
-  const { state, saveCreds } = await useMultiFileAuthState(authDir);
-
-  sock = makeWASocket({
-    auth: {
-      creds: state.creds,
-      keys: makeCacheableSignalKeyStore(state.keys, logger),
-    },
-    printQRInTerminal: false,
-    logger,
-    browser: ['NanoClaw', 'Chrome', '1.0.0'],
-  });
-
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update;
-
-    if (qr) {
-      const msg =
-        'WhatsApp authentication required. Run /setup in Claude Code.';
-      logger.error(msg);
-      exec(
-        `osascript -e 'display notification "${msg}" with title "NanoClaw" sound name "Basso"'`,
-      );
-      setTimeout(() => process.exit(1), 1000);
-    }
-
-    if (connection === 'close') {
-      const reason = (lastDisconnect?.error as any)?.output?.statusCode;
-      const shouldReconnect = reason !== DisconnectReason.loggedOut;
-      logger.info({ reason, shouldReconnect }, 'Connection closed');
-
-      if (shouldReconnect) {
-        logger.info('Reconnecting...');
-        connectWhatsApp();
-      } else {
-        logger.info('Logged out. Run /setup to re-authenticate.');
-        process.exit(0);
-      }
-    } else if (connection === 'open') {
-      logger.info('Connected to WhatsApp');
-      
-      // Build LID to phone mapping from auth state for self-chat translation
-      if (sock.user) {
-        const phoneUser = sock.user.id.split(':')[0];
-        const lidUser = sock.user.lid?.split(':')[0];
-        if (lidUser && phoneUser) {
-          lidToPhoneMap[lidUser] = `${phoneUser}@s.whatsapp.net`;
-          logger.debug({ lidUser, phoneUser }, 'LID to phone mapping set');
-        }
-      }
-      
-      // Sync group metadata on startup (respects 24h cache)
-      syncGroupMetadata().catch((err) =>
-        logger.error({ err }, 'Initial group sync failed'),
-      );
-      // Set up daily sync timer (only once)
-      if (!groupSyncTimerStarted) {
-        groupSyncTimerStarted = true;
-        setInterval(() => {
-          syncGroupMetadata().catch((err) =>
-            logger.error({ err }, 'Periodic group sync failed'),
-          );
-        }, GROUP_SYNC_INTERVAL_MS);
-      }
-      startSchedulerLoop({
-        sendMessage,
-        registeredGroups: () => registeredGroups,
-        getSessions: () => sessions,
-      });
-      startIpcWatcher();
-      startMessageLoop();
-    }
-  });
-
-  sock.ev.on('creds.update', saveCreds);
-
-  sock.ev.on('messages.upsert', ({ messages }) => {
-    for (const msg of messages) {
-      if (!msg.message) continue;
-      const rawJid = msg.key.remoteJid;
-      if (!rawJid || rawJid === 'status@broadcast') continue;
-
-      // Translate LID JID to phone JID if applicable
-      const chatJid = translateJid(rawJid);
-      
-      const timestamp = new Date(
-        Number(msg.messageTimestamp) * 1000,
-      ).toISOString();
-
-      // Always store chat metadata for group discovery
-      storeChatMetadata(chatJid, timestamp);
-
-      // Only store full message content for registered groups
-      if (registeredGroups[chatJid]) {
-        storeMessage(
-          msg,
-          chatJid,
-          msg.key.fromMe || false,
-          msg.pushName || undefined,
-        );
-      }
-    }
-  });
-}
-
-async function startMessageLoop(): Promise<void> {
-  if (messageLoopRunning) {
-    logger.debug('Message loop already running, skipping duplicate start');
-    return;
-  }
-  messageLoopRunning = true;
-  logger.info(`NanoClaw running (trigger: @${ASSISTANT_NAME})`);
-
-  while (true) {
-    try {
-      const jids = Object.keys(registeredGroups);
-      const { messages } = getNewMessages(jids, lastTimestamp, ASSISTANT_NAME);
-
-      if (messages.length > 0)
-        logger.info({ count: messages.length }, 'New messages');
-      for (const msg of messages) {
-        try {
-          await processMessage(msg);
-          // Only advance timestamp after successful processing for at-least-once delivery
-          lastTimestamp = msg.timestamp;
-          saveState();
-        } catch (err) {
-          logger.error(
-            { err, msg: msg.id },
-            'Error processing message, will retry',
-          );
-          // Stop processing this batch - failed message will be retried next loop
-          break;
-        }
-      }
-    } catch (err) {
-      logger.error({ err }, 'Error in message loop');
-    }
-    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
-  }
-}
-
-function ensureContainerSystemRunning(): void {
-  // Try Docker first (cross-platform)
-  try {
-    execSync('docker info', { stdio: 'pipe' });
-    logger.debug('Docker is running');
-    return;
-  } catch {
-    // Docker not available, try Apple Container (macOS only)
-    try {
-      execSync('container system status', { stdio: 'pipe' });
-      logger.debug('Apple Container system already running');
-      return;
-    } catch {
-      logger.info('Starting Apple Container system...');
-      try {
-        execSync('container system start', { stdio: 'pipe', timeout: 30000 });
-        logger.info('Apple Container system started');
-        return;
-      } catch (err) {
-        logger.error({ err }, 'Failed to start container runtime');
-        console.error(
-          '\n╔════════════════════════════════════════════════════════════════╗',
-        );
-        console.error(
-          '║  FATAL: No container runtime available                        ║',
-        );
-        console.error(
-          '║                                                                ║',
-        );
-        console.error(
-          '║  NanoClaw requires Docker or Apple Container. To fix:         ║',
-        );
-        console.error(
-          '║  - Install Docker: https://docs.docker.com/get-docker/        ║',
-        );
-        console.error(
-          '║  - Or Apple Container: github.com/apple/container/releases    ║',
-        );
-        console.error(
-          '╚════════════════════════════════════════════════════════════════╝\n',
-        );
-        throw new Error('Container runtime is required but not available');
-      }
-    }
-  }
-
-  // Clean up stopped NanoClaw containers from previous runs
-  try {
-    const output = execSync('container ls -a --format {{.Names}}', {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      encoding: 'utf-8',
-    });
-    const stale = output
-      .split('\n')
-      .map((n) => n.trim())
-      .filter((n) => n.startsWith('nanoclaw-'));
-    if (stale.length > 0) {
-      execSync(`container rm ${stale.join(' ')}`, { stdio: 'pipe' });
-      logger.info({ count: stale.length }, 'Cleaned up stopped containers');
-    }
-  } catch {
-    // No stopped containers or ls/rm not supported
   }
 }
 
@@ -888,36 +285,30 @@ async function main(): Promise<void> {
   if (args.includes('--revoke-device')) {
     const tokenOrName = args[args.indexOf('--revoke-device') + 1];
     if (!tokenOrName) {
-      console.error('❌ Usage: npm start -- --revoke-device <token-ou-nom>');
+      console.error('Usage: npm start -- --revoke-device <token-ou-nom>');
       process.exit(1);
     }
     const { initializeAuth, revokeToken } = await import('./auth.js');
     initializeAuth();
     const success = revokeToken(tokenOrName);
     if (success) {
-      console.log(`✅ Device "${tokenOrName}" révoqué`);
+      console.log(`Device "${tokenOrName}" revoked`);
     } else {
-      console.error(`❌ Device "${tokenOrName}" non trouvé`);
+      console.error(`Device "${tokenOrName}" not found`);
     }
     process.exit(success ? 0 : 1);
   }
 
   if (args.includes('--generate-token')) {
-    const deviceName = args[args.indexOf('--generate-token') + 1] || 'CLI Device';
     const { initializeAuth, generateTemporaryToken } = await import('./auth.js');
     initializeAuth();
     const token = generateTemporaryToken();
-    console.log('\n🔑 Token temporaire généré (valide 5 min):');
-    console.log(`   ${token}`);
-    console.log('\n💡 Utilisez ce token pour connecter un nouveau device\n');
+    console.log('\nTemporary token generated (valid 5 min):');
+    console.log(`   ${token}\n`);
     process.exit(0);
   }
 
-  console.log('🚀 Démarrage NanoClaw...');
-
-  // Load channels configuration
-  const channelsConfig = loadChannelsConfig();
-  console.log('✓ Configuration chargée');
+  console.log('Starting NovaBot...');
 
   ensureContainerSystemRunning();
   cleanupStaleContainers();
@@ -925,71 +316,53 @@ async function main(): Promise<void> {
   logger.info('Database initialized');
   await initContextAgent();
   logger.info('Context agent initialized');
-  loadState();
-  console.log('✓ État chargé');
 
-  // Start PWA channel if enabled
-  if (isChannelEnabled('pwa')) {
-    const pwaConfig = channelsConfig.channels.pwa!;
-    console.log('✓ Initialisation authentification...');
-    initializeAuth();
+  // Initialize authentication
+  console.log('Initializing authentication...');
+  initializeAuth();
 
-    // Check if we have any permanent devices already
-    const { getAllTokens } = await import('./auth.js');
-    const devices = getAllTokens();
-    const hasDevices = devices.length > 0;
+  const { getAllTokens } = await import('./auth.js');
+  const devices = getAllTokens();
+  const hasDevices = devices.length > 0;
 
-    // Create default PWA conversation in standalone mode
-    if (pwaConfig.standalone) {
-      createPWAConversation('Conversation principale');
-      console.log('✓ Conversation PWA créée');
-    }
+  // Start web server
+  console.log('Starting web server...');
+  startWebServer(WEB_PORT);
+  console.log('Web server started');
 
-    // Start web server immediately
-    console.log('✓ Démarrage serveur web...');
-    startWebServer(pwaConfig.port, () => registeredGroups, sendMessage);
-    console.log('✓ Serveur web démarré');
-
-    // Start Cloudflare Tunnel if configured
-    const tunnelHostname = process.env.CLOUDFLARE_TUNNEL_HOSTNAME;
-    if (process.env.CLOUDFLARE_TUNNEL_TOKEN) {
-      const started = await startCloudflareTunnel(pwaConfig.port);
-      if (started && tunnelHostname) {
-        console.log(`\n✅ PWA accessible sur https://${tunnelHostname}`);
-        console.log(`   (Protégée par Cloudflare Access)\n`);
-      } else if (started) {
-        console.log(`\n✅ Cloudflare Tunnel connecté`);
-        console.log(`   Configurez CLOUDFLARE_TUNNEL_HOSTNAME dans .env\n`);
-      }
-    }
-
-    if (!hasDevices) {
-      console.log('\n📱 Premier démarrage — Configuration device...\n');
-      const token = ensureAccessToken();
-      const baseUrl = tunnelHostname
-        ? `https://${tunnelHostname}`
-        : `http://localhost:${pwaConfig.port}`;
-      console.log(`🌐 URL: ${baseUrl}`);
-      console.log(`🔑 Token: ${token}\n`);
-    } else {
-      console.log(`\n✅ PWA démarrée sur http://localhost:${pwaConfig.port}`);
-      console.log(`📱 ${devices.length} device(s) connecté(s)\n`);
+  // Start Cloudflare Tunnel if configured
+  const tunnelHostname = process.env.CLOUDFLARE_TUNNEL_HOSTNAME;
+  if (process.env.CLOUDFLARE_TUNNEL_TOKEN) {
+    const started = await startCloudflareTunnel(WEB_PORT);
+    if (started && tunnelHostname) {
+      console.log(`\nPWA accessible at https://${tunnelHostname}\n`);
+    } else if (started) {
+      console.log(`\nCloudflare Tunnel connected`);
+      console.log(`Set CLOUDFLARE_TUNNEL_HOSTNAME in .env\n`);
     }
   }
 
-  // Connect WhatsApp if enabled
-  console.log('✓ Configuration terminée');
-  if (isChannelEnabled('whatsapp')) {
-    console.log('✓ Connexion à WhatsApp...');
-    logger.info('Connexion à WhatsApp...');
-    await connectWhatsApp();
+  if (!hasDevices) {
+    console.log('\nFirst start — Device setup...\n');
+    const token = ensureAccessToken();
+    const baseUrl = tunnelHostname
+      ? `https://${tunnelHostname}`
+      : `http://localhost:${WEB_PORT}`;
+    console.log(`URL: ${baseUrl}`);
+    console.log(`Token: ${token}\n`);
   } else {
-    logger.info('WhatsApp désactivé');
-    console.log('\n💡 Pour activer WhatsApp: modifiez channels.yaml\n');
+    console.log(`\nPWA running on http://localhost:${WEB_PORT}`);
+    console.log(`${devices.length} device(s) connected\n`);
   }
+
+  // Start background services
+  startSchedulerLoop();
+  startIpcWatcher();
+
+  console.log('NovaBot ready.');
 }
 
-// Graceful shutdown: stop all persistent containers
+// Graceful shutdown
 async function gracefulShutdown(signal: string) {
   logger.info({ signal }, 'Received shutdown signal, stopping...');
   try {
@@ -1006,26 +379,8 @@ async function gracefulShutdown(signal: string) {
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-// Clean up stale containers from previous runs
-function cleanupStaleContainers(): void {
-  try {
-    const output = execSync('docker ps -a --filter "name=nanoclaw-pwa-" --format "{{.Names}}"', {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      encoding: 'utf-8',
-      timeout: 5000,
-    });
-    const stale = output.split('\n').map(n => n.trim()).filter(n => n);
-    if (stale.length > 0) {
-      execSync(`docker rm -f ${stale.join(' ')}`, { stdio: 'pipe', timeout: 10000 });
-      logger.info({ count: stale.length }, 'Cleaned up stale PWA containers');
-    }
-  } catch {
-    // Docker not available or no stale containers — ignore
-  }
-}
-
-console.log('📦 Chargement des modules...');
+console.log('Loading modules...');
 main().catch((err) => {
-  logger.error({ err }, 'Failed to start NanoClaw');
+  logger.error({ err }, 'Failed to start NovaBot');
   process.exit(1);
 });

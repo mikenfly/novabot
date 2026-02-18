@@ -1,8 +1,8 @@
-# Overview - Architecture NanoClaw
+# Overview - Architecture NovaBot
 
 ## Introduction
 
-NanoClaw est un assistant Claude personnel avec une architecture modulaire basée sur des channels. Le système permet de connecter Claude à différentes interfaces (WhatsApp, PWA Web) tout en maintenant une isolation stricte entre les conversations.
+NovaBot est un assistant Claude personnel avec une architecture modulaire basée sur des channels. Le système permet de connecter Claude à différentes interfaces (WhatsApp, PWA Web) tout en maintenant une isolation stricte entre les conversations.
 
 ## Diagramme Système Complet
 
@@ -46,7 +46,7 @@ NanoClaw est un assistant Claude personnel avec une architecture modulaire basé
 │  │    • Read, Write, Edit, Glob, Grep (file operations)           │   │
 │  │    • WebSearch, WebFetch (internet access)                     │   │
 │  │    • agent-browser (browser automation)                        │   │
-│  │    • mcp__nanoclaw__* (scheduler tools via IPC)                │   │
+│  │    • mcp__novabot__* (scheduler tools via IPC)                │   │
 │  │                                                                │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │                                                                      │
@@ -70,7 +70,7 @@ NanoClaw est un assistant Claude personnel avec une architecture modulaire basé
 ## Folder Structure
 
 ```
-nanoclaw/
+novabot/
 ├── CLAUDE.md                      # Project context for Claude Code
 ├── docs/
 │   ├── SPEC.md                    # Original specification
@@ -172,15 +172,15 @@ nanoclaw/
 │       └── {group}/.claude/
 │
 ├── logs/                          # Runtime logs (gitignored)
-│   ├── nanoclaw.log               # Host stdout
-│   └── nanoclaw.error.log         # Host stderr
+│   ├── novabot.log               # Host stdout
+│   └── novabot.error.log         # Host stderr
 │   # Note: Per-container logs are in groups/{folder}/logs/container-*.log
 │
 ├── scripts/                       # Utility scripts
 │   └── show-qr.ts                 # Display PWA QR code
 │
 └── launchd/
-    └── com.nanoclaw.plist         # macOS service configuration
+    └── com.novabot.plist         # macOS service configuration
 ```
 
 ## Architecture Principles
@@ -226,14 +226,14 @@ channels:
     cloudflare_tunnel: true
   whatsapp:
     enabled: false
-    trigger: "@Jimmy"
+    trigger: "@Nova"
   telegram:
     enabled: false
   slack:
     enabled: false
 
 assistant:
-  name: "Jimmy"
+  name: "Nova"
   timezone: "Europe/Paris"
 
 paths:
@@ -252,8 +252,8 @@ CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...  # Subscription
 ANTHROPIC_API_KEY=sk-ant-api03-...        # Pay-per-use
 
 # Optional
-ASSISTANT_NAME=Jimmy
-CONTAINER_IMAGE=nanoclaw-agent:latest
+ASSISTANT_NAME=Nova
+CONTAINER_IMAGE=novabot-agent:latest
 CONTAINER_TIMEOUT=300000
 ```
 
@@ -261,7 +261,7 @@ CONTAINER_TIMEOUT=300000
 
 ## Memory Hierarchy
 
-NanoClaw utilise un système de mémoire hiérarchique via fichiers `CLAUDE.md` :
+NovaBot utilise un système de mémoire hiérarchique via fichiers `CLAUDE.md` :
 
 | Level | Location | Read By | Written By | Purpose |
 |-------|----------|---------|------------|---------|
@@ -371,7 +371,7 @@ Voir [ipc.md](./ipc.md) pour les détails.
 
 ### Logs
 
-- **Host logs** : `logs/nanoclaw.log`, `logs/nanoclaw.error.log`
+- **Host logs** : `logs/novabot.log`, `logs/novabot.error.log`
 - **Container logs** : `groups/{folder}/logs/container-{timestamp}.log`
 - **Structured logging** : Pino avec niveaux (trace, debug, info, warn, error)
 

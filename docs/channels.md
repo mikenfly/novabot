@@ -1,6 +1,6 @@
 # Channels - Interfaces de communication
 
-NanoClaw supporte plusieurs **channels** (interfaces) pour interagir avec l'assistant. Chaque channel peut être activé/désactivé indépendamment via `channels.yaml`.
+NovaBot supporte plusieurs **channels** (interfaces) pour interagir avec l'assistant. Chaque channel peut être activé/désactivé indépendamment via `channels.yaml`.
 
 ## Table des matières
 
@@ -83,7 +83,7 @@ La PWA utilise un système de **tokens temporaires** et **permanents** pour l'au
 **Expiration** :
 - Après première utilisation (pairing réussi)
 - Après 5 minutes si non utilisé
-- Au redémarrage de NanoClaw
+- Au redémarrage de NovaBot
 
 **Obtenir un nouveau token** :
 ```bash
@@ -202,7 +202,7 @@ En résumé :
 ```bash
 # .env
 CLOUDFLARE_TUNNEL_TOKEN=eyJ...
-CLOUDFLARE_TUNNEL_HOSTNAME=nanoclaw.example.com
+CLOUDFLARE_TUNNEL_HOSTNAME=novabot.example.com
 ```
 
 #### Désactiver le tunnel
@@ -218,7 +218,7 @@ Bot de messagerie qui répond dans les groupes WhatsApp.
 ### Fonctionnalités WhatsApp
 
 - ✅ Répond dans les groupes
-- ✅ Trigger pattern configurable (`@Jimmy`)
+- ✅ Trigger pattern configurable (`@Nova`)
 - ✅ Groupes isolés (mémoire séparée)
 - ✅ Tâches programmées
 - ✅ Gestion multi-groupes
@@ -230,7 +230,7 @@ Bot de messagerie qui répond dans les groupes WhatsApp.
 channels:
   whatsapp:
     enabled: true
-    trigger: "@Jimmy"    # Mot-clé pour déclencher
+    trigger: "@Nova"    # Mot-clé pour déclencher
 ```
 
 ### Setup initial
@@ -245,24 +245,24 @@ npm run auth
 
 **Dans un groupe WhatsApp** :
 ```
-@Jimmy quelle heure est-il ?
-@Jimmy envoie un résumé chaque lundi matin
-@Jimmy liste toutes les tâches programmées
+@Nova quelle heure est-il ?
+@Nova envoie un résumé chaque lundi matin
+@Nova liste toutes les tâches programmées
 ```
 
 **Dans le groupe principal** (`main`) :
 - Répond à tous les messages
-- Pas besoin de mentionner `@Jimmy`
+- Pas besoin de mentionner `@Nova`
 
 **Dans les autres groupes** :
-- Répond uniquement si `@Jimmy` est mentionné
+- Répond uniquement si `@Nova` est mentionné
 
 ### Enregistrer un nouveau groupe
 
 1. Ajoutez le bot au groupe WhatsApp
 2. Dans le groupe `main` :
    ```
-   @Jimmy enregistre ce groupe
+   @Nova enregistre ce groupe
    ```
 3. Suivez les instructions
 
@@ -327,7 +327,7 @@ channels:
   # WhatsApp
   whatsapp:
     enabled: false
-    trigger: "@Jimmy"
+    trigger: "@Nova"
 
   # Telegram (à venir)
   telegram:
@@ -339,7 +339,7 @@ channels:
 
 # Configuration globale
 assistant:
-  name: "Jimmy"
+  name: "Nova"
   timezone: "Europe/Paris"
 
 # Chemins (ne pas modifier sauf si nécessaire)

@@ -2,7 +2,7 @@
 
 ## Overview
 
-NanoClaw's PWA channel uses a two-tier token authentication system designed for secure device pairing without passwords.
+NovaBot's PWA channel uses a two-tier token authentication system designed for secure device pairing without passwords.
 
 ## Token Types
 

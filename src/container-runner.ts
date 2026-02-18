@@ -1,5 +1,5 @@
 /**
- * Container Runner for NanoClaw
+ * Container Runner for NovaBot
  * Spawns agent execution in Apple Container or Docker and handles IPC
  */
 import { ChildProcess, exec, execSync, spawn } from 'child_process';
@@ -22,9 +22,9 @@ import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
 
 // Sentinel markers for robust output parsing (must match agent-runner)
-const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
-const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
-const STATUS_PREFIX = '---NANOCLAW_STATUS---';
+const OUTPUT_START_MARKER = '---NOVABOT_OUTPUT_START---';
+const OUTPUT_END_MARKER = '---NOVABOT_OUTPUT_END---';
+const STATUS_PREFIX = '---NOVABOT_STATUS---';
 
 function getHomeDir(): string {
   const home = process.env.HOME || os.homedir();
@@ -227,7 +227,7 @@ export async function runContainerAgent(
 
   const mounts = buildVolumeMounts(group, input.isMain);
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
-  const containerName = `nanoclaw-${safeName}-${Date.now()}`;
+  const containerName = `novabot-${safeName}-${Date.now()}`;
   const containerArgs = buildContainerArgs(mounts, containerName);
 
   logger.debug(
@@ -758,7 +758,7 @@ export class ContainerManager {
 
     const mounts = buildVolumeMounts(group, false);
     const safeName = conversationId.replace(/[^a-zA-Z0-9-]/g, '-');
-    const containerName = `nanoclaw-pwa-${safeName}`;
+    const containerName = `novabot-pwa-${safeName}`;
     const containerArgs = buildPersistentContainerArgs(mounts, containerName);
 
     // Clean up any pre-existing container with the same name

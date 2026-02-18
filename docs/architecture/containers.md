@@ -2,7 +2,7 @@
 
 ## Overview
 
-NanoClaw executes all agent code inside isolated containers using either Docker or Apple Container. This provides security through filesystem isolation, process separation, and controlled resource access.
+NovaBot executes all agent code inside isolated containers using either Docker or Apple Container. This provides security through filesystem isolation, process separation, and controlled resource access.
 
 ## Container Runtimes
 
@@ -38,7 +38,7 @@ container system status  # Success = Apple Container available
 
 ## Runtime Auto-Detection
 
-NanoClaw automatically detects the best available runtime:
+NovaBot automatically detects the best available runtime:
 
 ```typescript
 // src/container-runner.ts
@@ -93,7 +93,7 @@ ENTRYPOINT ["/bin/bash", "-c", "source /workspace/env-dir/env 2>/dev/null; node 
 # Build container image
 ./container/build.sh
 
-# Output: nanoclaw-agent:latest
+# Output: novabot-agent:latest
 ```
 
 **Image includes** :
@@ -112,12 +112,12 @@ Each agent container receives specific directory mounts based on privilege level
 // Main group gets project root + group folder
 mounts = [
   {
-    hostPath: '/home/user/nanoclaw',
+    hostPath: '/home/user/novabot',
     containerPath: '/workspace/project',
     readonly: false
   },
   {
-    hostPath: '/home/user/nanoclaw/groups/main',
+    hostPath: '/home/user/novabot/groups/main',
     containerPath: '/workspace/group',
     readonly: false
   },
@@ -135,12 +135,12 @@ mounts = [
 // Other groups only get their own folder
 mounts = [
   {
-    hostPath: '/home/user/nanoclaw/groups/family-chat',
+    hostPath: '/home/user/novabot/groups/family-chat',
     containerPath: '/workspace/group',
     readonly: false
   },
   {
-    hostPath: '/home/user/nanoclaw/groups/global',
+    hostPath: '/home/user/novabot/groups/global',
     containerPath: '/workspace/global',
     readonly: true  // Read-only access to global memory
   },
@@ -159,7 +159,7 @@ Each group has an isolated Claude session directory:
 ```typescript
 // Per-group session mount
 {
-  hostPath: '/home/user/nanoclaw/data/sessions/family-chat/.claude',
+  hostPath: '/home/user/novabot/data/sessions/family-chat/.claude',
   containerPath: '/home/node/.claude',
   readonly: false
 }
@@ -179,7 +179,7 @@ Each group has an isolated IPC directory:
 ```typescript
 // Per-group IPC mount
 {
-  hostPath: '/home/user/nanoclaw/data/ipc/family-chat',
+  hostPath: '/home/user/novabot/data/ipc/family-chat',
   containerPath: '/workspace/ipc',
   readonly: false
 }
@@ -200,7 +200,7 @@ Filtered `.env` file mounted for authentication:
 ```typescript
 // Environment file mount
 {
-  hostPath: '/home/user/nanoclaw/data/env',
+  hostPath: '/home/user/novabot/data/env',
   containerPath: '/workspace/env-dir',
   readonly: true
 }
@@ -284,7 +284,7 @@ export async function runContainerAgent(
   input: ContainerInput
 ): Promise<ContainerOutput> {
   const mounts = buildVolumeMounts(group, input.isMain);
-  const containerName = `nanoclaw-${group.folder}-${Date.now()}`;
+  const containerName = `novabot-${group.folder}-${Date.now()}`;
   const containerArgs = buildContainerArgs(mounts, containerName);
 
   const runtime = detectContainerRuntime();
@@ -347,7 +347,7 @@ const timeout = setTimeout(() => {
 **Automatic removal** : `--rm` flag ensures container is deleted after exit.
 
 ```bash
-container run -i --rm --name nanoclaw-main-1234567890 ...
+container run -i --rm --name novabot-main-1234567890 ...
 ```
 
 **Startup cleanup** : Removes stale stopped containers from previous crashes.
@@ -359,7 +359,7 @@ function cleanupStaleContainers() {
     const output = execSync('container ls -a', { encoding: 'utf-8' });
     const staleContainers = output
       .split('\n')
-      .filter(line => line.includes('nanoclaw-'))
+      .filter(line => line.includes('novabot-'))
       .map(line => line.split(/\s+/)[0])
       .filter(Boolean);
 
@@ -407,9 +407,9 @@ interface ContainerInput {
 JSON object written to stdout, wrapped in sentinel markers:
 
 ```
----NANOCLAW_OUTPUT_START---
+---NOVABOT_OUTPUT_START---
 {"status":"success","result":"The weather in Paris is...","newSessionId":"session-def456"}
----NANOCLAW_OUTPUT_END---
+---NOVABOT_OUTPUT_END---
 ```
 
 **Sentinels purpose** : Robust parsing even if container logs extra output.
@@ -469,7 +469,7 @@ Docker supports resource limits:
 docker run --cpus="2" --memory="2g" ...
 ```
 
-**Not yet implemented** in NanoClaw. Could be added per-group in `containerConfig`:
+**Not yet implemented** in NovaBot. Could be added per-group in `containerConfig`:
 
 ```json
 {
@@ -562,7 +562,7 @@ logger.error(
 - Other groups' folders
 - Host system directories (unless explicitly mounted)
 - WhatsApp credentials (`store/auth/`)
-- Mount allowlist config (`~/.config/nanoclaw/mount-allowlist.json`)
+- Mount allowlist config (`~/.config/novabot/mount-allowlist.json`)
 
 ### Process
 
@@ -590,7 +590,7 @@ docker run --network custom ... # Custom network
 
 **Causes** :
 1. Runtime not available (Docker/Apple Container)
-2. Image not built (`nanoclaw-agent:latest` missing)
+2. Image not built (`novabot-agent:latest` missing)
 3. Mount path doesn't exist
 4. Invalid mount syntax
 

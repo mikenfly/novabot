@@ -21,16 +21,7 @@ import {
 import { logger } from './logger.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
 
-export interface SchedulerDependencies {
-  sendMessage: (jid: string, text: string) => Promise<void>;
-  registeredGroups: () => Record<string, RegisteredGroup>;
-  getSessions: () => Record<string, string>;
-}
-
-async function runTask(
-  task: ScheduledTask,
-  deps: SchedulerDependencies,
-): Promise<void> {
+async function runTask(task: ScheduledTask): Promise<void> {
   const startTime = Date.now();
   const groupDir = path.join(GROUPS_DIR, task.group_folder);
   fs.mkdirSync(groupDir, { recursive: true });
@@ -40,28 +31,13 @@ async function runTask(
     'Running scheduled task',
   );
 
-  const groups = deps.registeredGroups();
-  const group = Object.values(groups).find(
-    (g) => g.folder === task.group_folder,
-  );
+  const group: RegisteredGroup = {
+    name: task.group_folder,
+    folder: task.group_folder,
+    added_at: task.created_at,
+  };
 
-  if (!group) {
-    logger.error(
-      { taskId: task.id, groupFolder: task.group_folder },
-      'Group not found for task',
-    );
-    logTaskRun({
-      task_id: task.id,
-      run_at: new Date().toISOString(),
-      duration_ms: Date.now() - startTime,
-      status: 'error',
-      result: null,
-      error: `Group not found: ${task.group_folder}`,
-    });
-    return;
-  }
-
-  // Update tasks snapshot for container to read (filtered by group)
+  // Update tasks snapshot for container to read
   const isMain = task.group_folder === MAIN_GROUP_FOLDER;
   const tasks = getAllTasks();
   writeTasksSnapshot(
@@ -81,15 +57,9 @@ async function runTask(
   let result: string | null = null;
   let error: string | null = null;
 
-  // For group context mode, use the group's current session
-  const sessions = deps.getSessions();
-  const sessionId =
-    task.context_mode === 'group' ? sessions[task.group_folder] : undefined;
-
   try {
     const output = await runContainerAgent(group, {
       prompt: task.prompt,
-      sessionId,
       groupFolder: task.group_folder,
       chatJid: task.chat_jid,
       isMain,
@@ -145,7 +115,7 @@ async function runTask(
 
 let schedulerRunning = false;
 
-export function startSchedulerLoop(deps: SchedulerDependencies): void {
+export function startSchedulerLoop(): void {
   if (schedulerRunning) {
     logger.debug('Scheduler loop already running, skipping duplicate start');
     return;
@@ -167,7 +137,7 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
           continue;
         }
 
-        await runTask(currentTask, deps);
+        await runTask(currentTask);
       }
     } catch (err) {
       logger.error({ err }, 'Error in scheduler loop');

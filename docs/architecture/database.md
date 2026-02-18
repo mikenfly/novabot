@@ -2,7 +2,7 @@
 
 ## Overview
 
-NanoClaw uses SQLite (via better-sqlite3) for persistent data storage. The database stores WhatsApp messages, scheduled tasks, and metadata.
+NovaBot uses SQLite (via better-sqlite3) for persistent data storage. The database stores WhatsApp messages, scheduled tasks, and metadata.
 
 **Database file** : `store/messages.db`
 
@@ -70,7 +70,7 @@ id        chat_jid          sender           sender_name  content               
 -----------------------------------------------------------------------------------------------------------------------
 msg123    1234567890@g.us   1111@s.whatsapp  John         Hey everyone           2026-02-06T10:00:00Z   0
 msg124    1234567890@g.us   2222@s.whatsapp  Sarah        Hi!                    2026-02-06T10:01:00Z   0
-msg125    1234567890@g.us   me               null         Jimmy: Hello!          2026-02-06T10:02:00Z   1
+msg125    1234567890@g.us   me               null         Nova: Hello!          2026-02-06T10:02:00Z   1
 ```
 
 ### Table: scheduled_tasks

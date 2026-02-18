@@ -45,7 +45,6 @@ onCriticalInjection((exchange) => {
   const virtualGroup: RegisteredGroup = {
     name: conversation.name,
     folder: `pwa-${convId}`,
-    trigger: '',
     added_at: conversation.created_at,
   };
 
@@ -464,7 +463,6 @@ Règles :
   const virtualGroup: RegisteredGroup = {
     name: conversation.name,
     folder: `pwa-${conversationId}`,
-    trigger: '',
     added_at: conversation.created_at,
   };
 

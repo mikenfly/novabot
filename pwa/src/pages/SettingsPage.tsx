@@ -232,7 +232,7 @@ export default function SettingsPage() {
       {revokeTarget && (
         <ConfirmDialog
           title="Revoquer l'appareil"
-          message="Cet appareil ne pourra plus acceder a NanoClaw."
+          message="Cet appareil ne pourra plus acceder a NovaBot."
           confirmLabel="Revoquer"
           destructive
           onConfirm={handleRevoke}

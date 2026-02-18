@@ -2,7 +2,7 @@
 
 ## Introduction
 
-NanoClaw utilise une architecture modulaire basée sur des **channels** indépendants. Un channel est une interface qui permet à l'utilisateur de communiquer avec l'agent Claude via un protocole spécifique (WhatsApp, PWA Web, Telegram, Slack, etc.).
+NovaBot utilise une architecture modulaire basée sur des **channels** indépendants. Un channel est une interface qui permet à l'utilisateur de communiquer avec l'agent Claude via un protocole spécifique (WhatsApp, PWA Web, Telegram, Slack, etc.).
 
 ## Principe
 
@@ -21,14 +21,14 @@ channels:
     cloudflare_tunnel: true
   whatsapp:
     enabled: false
-    trigger: "@Jimmy"
+    trigger: "@Nova"
   telegram:
     enabled: false
   slack:
     enabled: false
 
 assistant:
-  name: "Jimmy"
+  name: "Nova"
   timezone: "Europe/Paris"
 
 paths:
@@ -193,7 +193,7 @@ function buildConversationPrompt(messages: Message[]): string {
 ```
 [Jan 31 2:32 PM] John: hey everyone, should we do pizza tonight?
 [Jan 31 2:33 PM] Sarah: sounds good to me
-[Jan 31 2:35 PM] John: @Jimmy what toppings do you recommend?
+[Jan 31 2:35 PM] John: @Nova what toppings do you recommend?
 ```
 
 ### Configuration Options
@@ -201,7 +201,7 @@ function buildConversationPrompt(messages: Message[]): string {
 ```yaml
 whatsapp:
   enabled: true
-  trigger: "@Jimmy"  # Regex pattern: ^@Jimmy\b (case insensitive)
+  trigger: "@Nova"  # Regex pattern: ^@Nova\b (case insensitive)
 ```
 
 ### Group Management
@@ -213,7 +213,7 @@ Groups are registered in `data/registered_groups.json` :
   "1234567890@g.us": {
     "name": "Family Chat",
     "folder": "family-chat",
-    "trigger": "@Jimmy",
+    "trigger": "@Nova",
     "added_at": "2026-02-06T10:00:00Z",
     "containerConfig": {
       "additionalMounts": [],
@@ -397,7 +397,7 @@ Voir [authentication.md](./authentication.md) pour plus de détails sur l'auth.
 | **Real-time** | Polling (2s) | WebSocket |
 | **Offline support** | No | Yes (Service Worker) |
 | **Session continuity** | Yes | Yes |
-| **Trigger required** | Yes (`@Jimmy`) | No |
+| **Trigger required** | Yes (`@Nova`) | No |
 
 ## Adding a New Channel
 

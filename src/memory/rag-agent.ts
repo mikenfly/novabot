@@ -26,7 +26,7 @@ export interface RagResult {
 
 // ==================== System prompt ====================
 
-const RAG_AGENT_SYSTEM_PROMPT = `Tu es l'agent RAG de NanoClaw. Ta mission est de fouiller la base de mémoire pour trouver TOUTES les entrées pertinentes à un échange donné, AVANT que l'agent de contexte ne le traite.
+const RAG_AGENT_SYSTEM_PROMPT = `Tu es l'agent RAG de NovaBot. Ta mission est de fouiller la base de mémoire pour trouver TOUTES les entrées pertinentes à un échange donné, AVANT que l'agent de contexte ne le traite.
 
 ## Ce que tu reçois
 

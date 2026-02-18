@@ -1,5 +1,5 @@
 {
-  "name": "nanoclaw",
+  "name": "novabot",
   "version": "1.0.0",
   "description": "Personal Claude assistant. Lightweight, secure, customizable.",
   "type": "module",
@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node --env-file=.env dist/index.js",
     "dev": "tsx watch --env-file=.env src/index.ts",
-    "auth": "tsx src/whatsapp-auth.ts",
+
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
@@ -20,23 +20,23 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.2.29",
     "@leeoniya/ufuzzy": "^1.0.19",
-    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+
     "better-sqlite3": "^11.8.1",
     "cron-parser": "^5.5.0",
     "express": "^4.22.1",
-    "js-yaml": "^4.1.1",
+
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
-    "qrcode-terminal": "^0.12.0",
+
     "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
     "@types/express": "^4.17.25",
-    "@types/js-yaml": "^4.0.9",
+
     "@types/node": "^22.10.0",
-    "@types/qrcode-terminal": "^0.12.2",
+
     "@types/ws": "^8.18.1",
     "prettier": "^3.8.1",
     "tsx": "^4.19.0",
