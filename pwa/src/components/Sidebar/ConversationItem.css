@@ -91,3 +91,26 @@
   font-size: 0.72rem;
   color: var(--text-tertiary);
 }
+
+/* Selection mode */
+.conversation-item--selected {
+  background: var(--accent-subtle);
+}
+
+.conversation-item__checkbox {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.conversation-item__checkbox--checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}

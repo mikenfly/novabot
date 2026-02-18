@@ -23,21 +23,31 @@ interface ConversationItemProps {
 export default function ConversationItem({ conversation }: ConversationItemProps) {
   const activeId = useConversationStore((s) => s.activeId);
   const setActive = useConversationStore((s) => s.setActive);
+  const selecting = useConversationStore((s) => s.selecting);
+  const selectedIds = useConversationStore((s) => s.selectedIds);
+  const toggleSelected = useConversationStore((s) => s.toggleSelected);
   const isMobile = useUIStore((s) => s.isMobile);
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
+  const isSelected = selectedIds.has(conversation.jid);
+
   const handleClick = useCallback(() => {
+    if (selecting) {
+      toggleSelected(conversation.jid);
+      return;
+    }
     setActive(conversation.jid);
     if (isMobile) {
       setSidebarOpen(false);
     }
-  }, [conversation.jid, setActive, isMobile, setSidebarOpen]);
+  }, [conversation.jid, setActive, isMobile, setSidebarOpen, selecting, toggleSelected]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    if (selecting) return;
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY });
-  }, []);
+  }, [selecting]);
 
   const handleMoreClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -50,19 +60,30 @@ export default function ConversationItem({ conversation }: ConversationItemProps
   return (
     <>
       <div
-        className={`conversation-item ${isActive ? 'conversation-item--active' : ''}`}
+        className={`conversation-item ${isActive && !selecting ? 'conversation-item--active' : ''} ${isSelected ? 'conversation-item--selected' : ''}`}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
         <div className="conversation-item__row">
+          {selecting && (
+            <span className={`conversation-item__checkbox ${isSelected ? 'conversation-item__checkbox--checked' : ''}`}>
+              {isSelected && (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </span>
+          )}
           <h4 className="conversation-item__name">{conversation.name}</h4>
-          <button
-            className="conversation-item__more"
-            onClick={handleMoreClick}
-            aria-label="Options"
-          >
-            &#x22EF;
-          </button>
+          {!selecting && (
+            <button
+              className="conversation-item__more"
+              onClick={handleMoreClick}
+              aria-label="Options"
+            >
+              &#x22EF;
+            </button>
+          )}
         </div>
         <p className="conversation-item__time">{formatRelativeTime(conversation.lastActivity)}</p>
       </div>

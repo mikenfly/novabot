@@ -8,12 +8,18 @@ interface ConversationState {
   activeId: string | null;
   isLoading: boolean;
   drafts: Record<string, string>;
+  selecting: boolean;
+  selectedIds: Set<string>;
   fetchConversations: () => Promise<void>;
   createConversation: (name?: string) => Promise<string>;
   renameConversation: (id: string, name: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
   setActive: (id: string) => void;
   setDraft: (id: string, text: string) => void;
+  toggleSelecting: () => void;
+  toggleSelected: (id: string) => void;
+  selectAll: () => void;
+  deleteSelected: () => Promise<void>;
   /** Move a conversation to the top (new message received) */
   bumpConversation: (id: string) => void;
   handleConversationCreated: (conv: Conversation) => void;
@@ -26,6 +32,8 @@ export const useConversationStore = create<ConversationState>((set) => ({
   activeId: null,
   isLoading: false,
   drafts: {},
+  selecting: false,
+  selectedIds: new Set<string>(),
 
   fetchConversations: async () => {
     set({ isLoading: true });
@@ -82,6 +90,51 @@ export const useConversationStore = create<ConversationState>((set) => ({
       }
       if (state.drafts[id] === text) return state;
       return { drafts: { ...state.drafts, [id]: text } };
+    });
+  },
+
+  toggleSelecting: () => {
+    set((state) => ({
+      selecting: !state.selecting,
+      selectedIds: new Set<string>(),
+    }));
+  },
+
+  toggleSelected: (id: string) => {
+    set((state) => {
+      const next = new Set(state.selectedIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { selectedIds: next };
+    });
+  },
+
+  selectAll: () => {
+    set((state) => {
+      const allSelected = state.selectedIds.size === state.conversations.length;
+      return {
+        selectedIds: allSelected
+          ? new Set<string>()
+          : new Set(state.conversations.map((c) => c.jid)),
+      };
+    });
+  },
+
+  deleteSelected: async () => {
+    const { selectedIds, activeId } = useConversationStore.getState();
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+
+    await api.delete('/api/conversations', { ids });
+
+    set((state) => {
+      const deleted = new Set(ids);
+      return {
+        conversations: state.conversations.filter((c) => !deleted.has(c.jid)),
+        activeId: activeId && deleted.has(activeId) ? null : activeId,
+        selecting: false,
+        selectedIds: new Set<string>(),
+      };
     });
   },
 

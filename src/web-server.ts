@@ -313,6 +313,27 @@ export function startWebServer(
     },
   );
 
+  // Batch delete conversations
+  app.delete('/api/conversations', authMiddleware, (req: AuthRequest, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'ids array is required' });
+    }
+
+    const deleted: string[] = [];
+    for (const id of ids) {
+      if (typeof id === 'string' && deletePWAConversation(id)) {
+        broadcastToClients({
+          type: 'conversation_deleted',
+          data: { jid: id },
+        });
+        deleted.push(id);
+      }
+    }
+
+    res.json({ deleted });
+  });
+
   // Interrupt the agent for a conversation
   app.post(
     '/api/conversations/:id/interrupt',
