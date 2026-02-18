@@ -24,7 +24,7 @@ npm start
 C'est tout ! NanoClaw démarre avec la configuration par défaut (PWA activée).
 
 **Vous verrez** :
-- ✅ Un QR code pour connexion rapide (si Tailscale disponible)
+- ✅ Un QR code pour connexion rapide (si configuré)
 - ✅ URL locale : `http://localhost:17283`
 - ✅ Token d'accès temporaire
 
@@ -90,21 +90,19 @@ C'est tout ! NanoClaw démarre avec la configuration par défaut (PWA activée).
 
 Les conversations WhatsApp apparaissent dans la PWA !
 
-## Configuration Tailscale (optionnel)
+## Cloudflare Tunnel (optionnel)
 
-Pour accès HTTPS public à la PWA :
+Pour un accès HTTPS sécurisé depuis n'importe où (connexion sortante uniquement, Google OAuth obligatoire) :
 
-```bash
-# Une seule fois
-sudo tailscale set --operator=$USER
+1. Suivez le guide : [docs/setup/cloudflare-tunnel.md](setup/cloudflare-tunnel.md)
+2. Ajoutez le token dans `.env` :
+   ```bash
+   CLOUDFLARE_TUNNEL_TOKEN=eyJ...
+   CLOUDFLARE_TUNNEL_HOSTNAME=nanoclaw.example.com
+   ```
+3. Relancez : `npm start`
 
-# Ensuite relancez
-npm start
-```
-
-Vous obtiendrez une URL publique : `https://[machine].tail[xxx].ts.net`
-
-**Pas de Tailscale ?** Pas de problème, l'app fonctionne en local.
+**Pas de Cloudflare ?** Pas de problème, l'app fonctionne en local.
 
 ## Gestion des devices (PWA)
 
@@ -174,9 +172,10 @@ npm run dev           # Mode développement (hot reload)
 - Relancez `npm run auth`
 - Vérifiez que le téléphone est connecté
 
-**Tailscale Funnel ne marche pas** :
-- `sudo tailscale set --operator=$USER`
-- Ou désactivez : `tailscale_funnel: false` dans `channels.yaml`
+**Cloudflare Tunnel ne se connecte pas** :
+- Vérifiez que `cloudflared` est installé : `cloudflared --version`
+- Vérifiez le token dans `.env`
+- Consultez les logs pour les erreurs de connexion
 
 **Token expiré** :
 - Les tokens temporaires expirent après 5 minutes

@@ -45,7 +45,7 @@ Show the user their current setup:
 PWA: [enabled/disabled]
   Mode: [standalone/synchronized]
   Port: [port]
-  Tailscale Funnel: [yes/no]
+  Cloudflare Tunnel: [yes/no]
 
 WhatsApp: [enabled/disabled]
   Trigger: [@Jimmy]
@@ -82,7 +82,7 @@ channels:
     enabled: true
     port: 3000
     standalone: true
-    tailscale_funnel: true
+    cloudflare_tunnel: true
 
   whatsapp:
     enabled: false
@@ -109,7 +109,7 @@ paths:
 > ```
 >
 > You'll see:
-> - A QR code to connect your phone (if Tailscale configured)
+> - A QR code to connect your phone (if configured)
 > - URL: http://localhost:3000
 > - A temporary access token
 >
@@ -175,7 +175,7 @@ channels:
     enabled: true
     port: 3000
     standalone: false  # Synchronized with WhatsApp
-    tailscale_funnel: true
+    cloudflare_tunnel: true
 
   whatsapp:
     enabled: true
@@ -254,14 +254,17 @@ pwa:
   port: 3001
 ```
 
-### Toggle Tailscale Funnel
+### Toggle Cloudflare Tunnel
 
 Current: [enabled/disabled]
 
-Update in `channels.yaml`:
-```yaml
-pwa:
-  tailscale_funnel: false  # or true
+Set in `.env`:
+```bash
+# Enable tunnel
+CLOUDFLARE_TUNNEL_TOKEN=eyJ...
+CLOUDFLARE_TUNNEL_HOSTNAME=nanoclaw.example.com
+
+# Disable tunnel: remove or comment out CLOUDFLARE_TUNNEL_TOKEN
 ```
 
 ### Switch PWA Mode (standalone ↔ synchronized)
@@ -312,10 +315,10 @@ npm run auth     # Authenticate before starting
 **Current setup:** PWA enabled
 
 **Recommendation:**
-1. Ensure `tailscale_funnel: true` in channels.yaml
-2. Setup Tailscale: `sudo tailscale set --operator=$USER`
+1. Set up Cloudflare Tunnel: see `docs/setup/cloudflare-tunnel.md`
+2. Add `CLOUDFLARE_TUNNEL_TOKEN` and `CLOUDFLARE_TUNNEL_HOSTNAME` in `.env`
 3. Restart: `npm start`
-4. Scan the QR code with your phone
+4. Open the Cloudflare hostname URL on your phone
 
 ### "WhatsApp keeps disconnecting"
 

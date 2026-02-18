@@ -9,7 +9,7 @@
 #     enabled: true
 #     port: 3000
 #     standalone: true          # Conversations directes avec l'agent
-#     tailscale_funnel: true    # Accès HTTPS public via Tailscale
+#     cloudflare_tunnel: true   # Tunnel sécurisé (nécessite CLOUDFLARE_TUNNEL_TOKEN dans .env)
 #
 #   whatsapp:
 #     enabled: false
@@ -45,7 +45,7 @@
 #     enabled: true
 #     port: 3000
 #     standalone: false         # Synchronisé avec WhatsApp
-#     tailscale_funnel: true
+#     cloudflare_tunnel: true
 #
 #   whatsapp:
 #     enabled: true
@@ -65,7 +65,7 @@
 #     enabled: true
 #     port: 3000
 #     standalone: false
-#     tailscale_funnel: true
+#     cloudflare_tunnel: true
 #
 #   whatsapp:
 #     enabled: true
@@ -85,7 +85,7 @@ channels:
     enabled: true
     port: 3000
     standalone: true
-    tailscale_funnel: true
+    cloudflare_tunnel: true
 
   whatsapp:
     enabled: false

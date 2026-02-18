@@ -30,7 +30,7 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 
 ## Worktrees
 
-On peut faire tourner plusieurs instances NanoClaw en parallèle grâce aux git worktrees. Chaque worktree a son propre store, data et groups isolés — il suffit de configurer un port différent via `.env`. Fonctionne en local pur ou avec Tailscale Funnel pour tester sur mobile.
+On peut faire tourner plusieurs instances NanoClaw en parallèle grâce aux git worktrees. Chaque worktree a son propre store, data et groups isolés — il suffit de configurer un port différent via `.env`. Fonctionne en local pur ou avec Cloudflare Tunnel pour accès distant sécurisé.
 
 → **[docs/dev/worktrees.md](docs/dev/worktrees.md)** pour le setup et les variables d'environnement.
 

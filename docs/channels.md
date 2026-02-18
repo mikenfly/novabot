@@ -9,7 +9,7 @@ NanoClaw supporte plusieurs **channels** (interfaces) pour interagir avec l'assi
   - [Configuration](#configuration-pwa)
   - [Authentification et tokens](#authentification-et-tokens)
   - [Gestion des devices](#gestion-des-devices)
-  - [Tailscale Funnel](#tailscale-funnel)
+  - [Cloudflare Tunnel + Access](#cloudflare-tunnel--access)
 - [WhatsApp](#whatsapp)
 - [Telegram](#telegram) (à venir)
 - [Slack](#slack) (à venir)
@@ -31,7 +31,7 @@ Interface web moderne accessible depuis n'importe quel navigateur ou iPhone.
 - ✅ Mode hors ligne (via Service Worker)
 - ✅ Multi-devices simultanés
 - ✅ Authentification par tokens sécurisés
-- ✅ Accès HTTPS public via Tailscale Funnel
+- ✅ Accès HTTPS sécurisé via Cloudflare Tunnel + Access
 
 ### Configuration PWA
 
@@ -42,7 +42,7 @@ channels:
     enabled: true              # Activer/désactiver
     port: 17283                # Port du serveur web
     standalone: true          # Mode standalone ou synchronisé
-    tailscale_funnel: true    # Exposition HTTPS publique
+    cloudflare_tunnel: true   # Tunnel sécurisé (nécessite token dans .env)
 ```
 
 **Modes** :
@@ -100,7 +100,7 @@ npm start    # Affiche un nouveau token
 
 **Sécurité** :
 - Générés avec `crypto.randomBytes(32)` (256 bits)
-- Transmission via HTTPS (Tailscale Funnel)
+- Transmission via HTTPS (Cloudflare Tunnel)
 - Pas de password requis (tokens suffisent)
 
 ### Gestion des devices
@@ -174,61 +174,40 @@ npm start -- --revoke-device "Nom du device"
 
 **Note** : Le device révoqué devra se reconnecter avec un nouveau token temporaire.
 
-### Tailscale Funnel
+### Cloudflare Tunnel + Access
 
-Tailscale Funnel expose automatiquement votre PWA sur internet avec HTTPS.
+Cloudflare Tunnel expose votre PWA sur internet via une connexion sortante uniquement (aucun port ouvert). Cloudflare Access ajoute une authentification Google OAuth obligatoire.
 
 #### Avantages
 
+- ✅ Connexion sortante uniquement — aucun port ouvert sur la machine
+- ✅ Authentification Google OAuth obligatoire (Cloudflare Access)
+- ✅ WAF, rate limiting, geo-filtering, anti-DDoS inclus
 - ✅ URL HTTPS fixe qui ne change jamais
-- ✅ Accessible depuis n'importe où
-- ✅ Pas de port forwarding
-- ✅ Fonctionne derrière firewall/NAT
 - ✅ Certificat SSL automatique
-- ✅ Gratuit
+- ✅ Fonctionne derrière firewall/NAT
 
-#### Setup (une seule fois)
+#### Setup
+
+Voir le guide complet : [docs/setup/cloudflare-tunnel.md](setup/cloudflare-tunnel.md)
+
+En résumé :
+1. Installer `cloudflared`
+2. Créer un tunnel dans le dashboard Cloudflare Zero Trust
+3. Configurer Cloudflare Access avec Google OAuth
+4. Ajouter le token dans `.env`
+
+#### Configuration
 
 ```bash
-sudo tailscale set --operator=$USER
+# .env
+CLOUDFLARE_TUNNEL_TOKEN=eyJ...
+CLOUDFLARE_TUNNEL_HOSTNAME=nanoclaw.example.com
 ```
 
-#### Utilisation
+#### Désactiver le tunnel
 
-```bash
-npm start
-```
-
-NanoClaw configure Funnel automatiquement et affiche un QR code avec votre URL publique.
-
-**Format URL** : `https://[machine].tail[xxx].ts.net:10000`
-
-#### Désactiver Tailscale Funnel
-
-```yaml
-# channels.yaml
-pwa:
-  tailscale_funnel: false
-```
-
-L'app fonctionnera en local uniquement : `http://localhost:17283`
-
-#### Troubleshooting
-
-**"Access denied"** :
-```bash
-sudo tailscale set --operator=$USER
-```
-
-**Pas de QR code** :
-- Tailscale n'est pas configuré
-- L'app fonctionne quand même en local
-- Installez Tailscale ou désactivez Funnel
-
-**URL change** :
-- L'URL Tailscale est liée au hostname de votre machine
-- Si le hostname change, l'URL change
-- Pour fixer : définir un hostname stable
+Ne pas définir `CLOUDFLARE_TUNNEL_TOKEN` dans `.env`. L'app fonctionnera en local uniquement : `http://localhost:17283`
 
 ---
 
@@ -343,7 +322,7 @@ channels:
     enabled: true
     port: 17283
     standalone: true
-    tailscale_funnel: true
+    cloudflare_tunnel: true   # Nécessite CLOUDFLARE_TUNNEL_TOKEN dans .env
 
   # WhatsApp
   whatsapp:
@@ -374,7 +353,7 @@ paths:
 
 **Configuration du port :**
 - Le port défini dans `channels.yaml` (`pwa.port`) est la **source unique de vérité**
-- Ce port est utilisé par le serveur web ET par Tailscale Funnel
+- Ce port est utilisé par le serveur web ET par le Cloudflare Tunnel
 - Pour changer le port, modifiez uniquement cette valeur dans `channels.yaml`
 - Port par défaut : `17283` (choisi pour éviter les conflits avec les ports courants comme 3000)
 

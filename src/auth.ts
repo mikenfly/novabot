@@ -262,6 +262,22 @@ function cleanupExpiredTokens(): void {
 }
 
 /**
+ * Ensure an access token exists — return existing or generate temporary.
+ */
+export function ensureAccessToken(): string {
+  const existingToken = getFirstToken();
+  if (existingToken) {
+    logger.info('Utilisation du token existant');
+    return existingToken;
+  }
+
+  logger.info('Génération d\'un token temporaire (5 min)...');
+  const token = generateTemporaryToken();
+  logger.info('Token temporaire généré');
+  return token;
+}
+
+/**
  * Get first available token (for backward compatibility with ensureAccessToken)
  */
 export function getFirstToken(): string | null {
