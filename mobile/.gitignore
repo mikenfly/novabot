@@ -1,0 +1,28 @@
+# React Native
+node_modules/
+ios/Pods/
+ios/build/
+android/build/
+android/app/build/
+*.xcworkspace
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Metro
+.metro-health-check*
+
+# Misc
+.DS_Store
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
