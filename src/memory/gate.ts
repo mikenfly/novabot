@@ -18,24 +18,25 @@ function gateLog(msg: string): void {
   }
 }
 
-const GATE_SYSTEM_PROMPT = `Tu es un filtre rapide pour un système de mémoire. Tu décides si un échange mérite d'être traité par le pipeline de mémorisation.
+const GATE_SYSTEM_PROMPT = `Tu es un filtre pour un système de mémoire. Par défaut, tout échange est PROCESS. Tu ne cherches que les raisons de SKIP.
 
-Réponds PROCESS si l'échange contient des informations qui méritent d'être mémorisées à long terme :
-- Personnes mentionnées (noms, rôles, relations)
-- Décisions ou validations ("on part sur cette approche", "il a validé")
-- Faits personnels (adresses, dates, préférences)
-- Avancées projet, jalons, deadlines
-- Changements de situation ou de plan
-- Confirmations ou infirmations — même un simple "oui" ou "non" qui confirme ou dément une hypothèse, question ou déduction de l'assistant dans un échange précédent. Si l'assistant a posé une question ("c'est ta sœur ?", "il travaille chez X ?") et que l'utilisateur répond, c'est PROCESS.
+Réponds SKIP uniquement si l'échange remplit TOUTES ces conditions :
+1. Le message utilisateur ne contient AUCUN nom de personne, lieu, date, montant, ni outil/service nommé
+2. Le message ne contient AUCUNE décision, choix, validation, correction, deadline ou avancement
+3. Le message ne confirme ni n'infirme une question ou supposition de l'assistant dans les échanges précédents
 
-Réponds SKIP si l'échange est purement :
-- Du debug technique sans décision (stack traces, corrections CSS)
-- Des questions factuelles génériques ("quel fuseau horaire ?")
-- Des acquittements simples SANS question/hypothèse en suspens ("ok", "merci", "ça marche" après une tâche terminée)
-- De la conversation banale sans contenu persistant
+Exemples de SKIP (les 3 conditions sont remplies) :
+- "ok merci" / "ça marche" / "cool" (acquittement pur, rien en suspens)
+- "Quel fuseau horaire à Tokyo ?" (question factuelle générique)
+- Copier-coller d'un stack trace ou log d'erreur brut
 
-IMPORTANT : En cas de doute, réponds PROCESS. Il vaut mieux traiter un échange inutile que rater une information importante.
-IMPORTANT : Regarde bien les échanges PRÉCÉDENTS. Si l'assistant y pose une question ou fait une supposition, un "oui"/"non"/"exactement" de l'utilisateur CONFIRME cette info et doit être PROCESS.
+Exemples de PROCESS (au moins 1 condition échoue) :
+- "oui" en réponse à "c'est ton frère ?" → confirme une info (condition 3)
+- "j'ai galéré sur Stripe" → outil nommé (condition 1)
+- "c'est quasi fini" → avancement (condition 2)
+- "ouais c'est rien de grave" → infirme une inquiétude précédente (condition 3)
+
+En cas de doute → PROCESS. Mieux vaut traiter un échange vide que rater une information.
 
 Réponds en un seul mot (PROCESS ou SKIP) suivi d'une raison en 10 mots max.`;
 
