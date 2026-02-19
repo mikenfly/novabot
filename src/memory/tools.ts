@@ -174,6 +174,9 @@ Always use this before creating a new entry to check for duplicates.`,
       .describe('Include related entry content (default true)'),
   },
   async (args) => {
+    const t0 = Date.now();
+    const tag = `[search "${args.query.slice(0, 40)}"]`;
+    console.log(`${tag} START`);
     try {
       const includeRelated = args.include_related !== false;
       const depth = includeRelated ? (args.depth ?? 1) : 0;
@@ -184,10 +187,13 @@ Always use this before creating a new entry to check for duplicates.`,
       // Try hybrid search (vector + keyword), fall back to keyword-only on embedding failure
       let results: (MemoryEntry & { similarity: number; matchType?: string })[];
       try {
+        console.log(`${tag} generating embedding...`);
         const embedding = await generateEmbedding(args.query);
+        console.log(`${tag} embedding done (${Date.now() - t0}ms), hybridSearch...`);
         results = hybridSearch(embedding, args.query, limit, category);
-      } catch {
-        // Embedding API failed — degrade to keyword-only search
+        console.log(`${tag} hybridSearch done (${Date.now() - t0}ms), ${results.length} results`);
+      } catch (e) {
+        console.log(`${tag} embedding failed (${Date.now() - t0}ms): ${e instanceof Error ? e.message : e}, keyword fallback`);
         const kwResults = searchByKeyword(args.query, limit, category);
         results = kwResults.map(r => ({
           ...r,
@@ -209,10 +215,12 @@ Always use this before creating a new entry to check for duplicates.`,
         )
         .join('\n\n---\n\n');
 
+      console.log(`${tag} DONE (total: ${Date.now() - t0}ms, ${results.length} results)`);
       return {
         content: [{ type: 'text', text: formatted }],
       };
     } catch (err) {
+      console.log(`${tag} ERROR (${Date.now() - t0}ms): ${err instanceof Error ? err.message : err}`);
       return {
         content: [
           {
@@ -337,21 +345,29 @@ Content style: write a current-state snapshot — what IS true right now, not wh
       .describe('Brief note on origin context'),
   },
   async (args) => {
+    const t0 = Date.now();
+    const tag = `[upsert ${args.key}]`;
+    console.log(`${tag} START category=${args.category}`);
     try {
       // Step 1: Pre-search for related entries (hybrid with keyword fallback)
       let relatedOthers: { key: string; category: string; content: string; similarity?: number; matchType?: string }[] = [];
       try {
+        console.log(`${tag} step1: generating search embedding...`);
         const basicEmbText = `[${args.category}] ${args.key}: ${args.content}`;
         const searchEmbedding = await generateEmbedding(basicEmbText);
+        console.log(`${tag} step1: embedding done (${Date.now() - t0}ms), running hybridSearch...`);
         const related = hybridSearch(searchEmbedding, args.content, 5, undefined);
+        console.log(`${tag} step1: hybridSearch done (${Date.now() - t0}ms), ${related.length} results`);
         relatedOthers = related.filter((r) => r.key !== args.key);
-      } catch {
-        // Embedding API failed — fall back to keyword-only
+      } catch (e) {
+        console.log(`${tag} step1: embedding/search failed (${Date.now() - t0}ms): ${e instanceof Error ? e.message : e}, falling back to keyword`);
         const kwResults = searchByKeyword(args.content, 5);
         relatedOthers = kwResults.filter((r) => r.key !== args.key);
+        console.log(`${tag} step1: keyword fallback done (${Date.now() - t0}ms), ${kwResults.length} results`);
       }
 
       // Step 2: Upsert entry
+      console.log(`${tag} step2: upserting...`);
       upsertEntry({
         category: args.category as MemoryCategory,
         key: args.key,
@@ -360,17 +376,23 @@ Content style: write a current-state snapshot — what IS true right now, not wh
         origin_type: args.origin_type,
         origin_summary: args.origin_summary,
       });
+      console.log(`${tag} step2: upsert done (${Date.now() - t0}ms)`);
 
       // Step 3: Build contextual embedding (includes relation summaries) with fallback
       try {
+        console.log(`${tag} step3: building embedding text...`);
         const embeddingText = buildEmbeddingText(args.key);
+        console.log(`${tag} step3: generating contextual embedding (${embeddingText.length} chars)...`);
         const embeddingArray = await generateEmbedding(embeddingText);
+        console.log(`${tag} step3: embedding done (${Date.now() - t0}ms), updating DB...`);
         updateEmbedding(args.key, embeddingToBuffer(embeddingArray), embeddingText);
-      } catch {
-        // Embedding failed — entry stays dirty, refreshDirtyEmbeddings() will retry later
+        console.log(`${tag} step3: DB updated (${Date.now() - t0}ms)`);
+      } catch (e) {
+        console.log(`${tag} step3: embedding failed (${Date.now() - t0}ms): ${e instanceof Error ? e.message : e} — stays dirty`);
       }
 
       const action = getEntry(args.key)!.mention_count > 1 ? 'Updated' : 'Created';
+      console.log(`${tag} DONE ${action} (total: ${Date.now() - t0}ms)`);
 
       // Build related entries feedback
       let relatedInfo = '';

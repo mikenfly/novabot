@@ -435,6 +435,7 @@ async function runPhase(
 
   const mcpServers = mcpServer ? { memory: mcpServer } : undefined;
 
+  let lastMsgAt = Date.now();
   for await (const message of query({
     prompt: userPrompt,
     options: {
@@ -449,6 +450,10 @@ async function runPhase(
       ...(mcpServers ? { mcpServers } : {}),
     },
   })) {
+    const gap = Date.now() - lastMsgAt;
+    log(`  [${phaseName}] msg type=${message.type} (gap=${gap}ms)`);
+    lastMsgAt = Date.now();
+
     // Capture session_id
     if ('session_id' in message && message.session_id) {
       phaseSessionId = message.session_id;
@@ -591,10 +596,14 @@ async function processContextAgentQueue(): Promise<void> {
     }
 
     // After processing: generate context file, refresh dirty embeddings, git commit
+    log('  Post-processing: generating memory context...');
     await generateMemoryContext();
+    log('  Post-processing: refreshing dirty embeddings...');
     const refreshed = await refreshDirtyEmbeddings();
     if (refreshed > 0) log(`  Refreshed ${refreshed} dirty embeddings`);
+    log('  Post-processing: git commit...');
     await gitCommitIfChanged();
+    log('  Post-processing: done');
 
     // Trace: finalize context agent for all exchanges in batch
     const contextDuration = Date.now() - contextStartTime;
@@ -634,6 +643,7 @@ async function refreshDirtyEmbeddings(): Promise<number> {
   const dirtyKeys = getDirtyEmbeddingKeys();
   if (dirtyKeys.length === 0) return 0;
 
+  log(`  refreshDirtyEmbeddings: ${dirtyKeys.length} dirty keys: [${dirtyKeys.join(', ')}]`);
   let refreshed = 0;
   for (const key of dirtyKeys) {
     try {
@@ -644,7 +654,7 @@ async function refreshDirtyEmbeddings(): Promise<number> {
 
       // Skip if embedding text hasn't actually changed
       if (entry.embedding_text === newText) {
-        // Clear dirty flag without re-embedding
+        log(`  refreshDirtyEmbeddings: ${key} — text unchanged, skip`);
         updateEmbedding(
           key,
           entry.embedding as Buffer,
@@ -653,8 +663,10 @@ async function refreshDirtyEmbeddings(): Promise<number> {
         continue;
       }
 
+      log(`  refreshDirtyEmbeddings: ${key} — generating embedding (${newText.length} chars)...`);
       const embeddingArray = await generateEmbedding(newText);
       updateEmbedding(key, embeddingToBuffer(embeddingArray), newText);
+      log(`  refreshDirtyEmbeddings: ${key} — done`);
       refreshed++;
     } catch (err) {
       log(`  ⚠ Failed to refresh embedding for ${key}: ${err instanceof Error ? err.message : String(err)}`);
@@ -746,6 +758,14 @@ export async function initContextAgent(): Promise<void> {
 
   // Start urgent context cleanup timer
   urgentContextCleanupTimer = setInterval(cleanupUrgentContext, 30000);
+
+  // Heartbeat — proves event loop is alive (logs every 5s to agent.log)
+  setInterval(() => {
+    const mem = process.memoryUsage();
+    const heapMB = (mem.heapUsed / 1024 / 1024).toFixed(1);
+    const rssMB = (mem.rss / 1024 / 1024).toFixed(1);
+    log(`[heartbeat] heap=${heapMB}MB rss=${rssMB}MB activeRag=${activeRagCount} processing=${processing} queue=${contextAgentQueue.length}`);
+  }, 5000);
 
   log(`Context agent ready (multi-phase, RAG: ${RAG_ENABLED ? 'enabled' : 'disabled'}, gate: ${GATE_ENABLED ? 'enabled' : 'disabled'})`);
 }
