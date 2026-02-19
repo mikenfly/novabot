@@ -71,5 +71,18 @@ export const MODEL_TITLE = process.env.MODEL_TITLE || 'claude-haiku-4-5';
 export const RAG_MODEL = MODEL_RAG;
 export const RAG_ENABLED = process.env.RAG_ENABLED !== 'false'; // true by default
 export const RAG_TIMEOUT = parseInt(process.env.RAG_TIMEOUT || '60000', 10); // 60s
-export const RAG_RECENT_EXCHANGES_BUFFER = 20; // global circular buffer size
 export const RAG_RECENT_EXCHANGES_PER_CONV = 10; // filtered per-conversation for RAG agent
+
+// Exchange buffer (rolling window of recent exchanges for context agent)
+export const EXCHANGE_BUFFER_SIZE = parseInt(process.env.EXCHANGE_BUFFER_SIZE || '40', 10);
+/** @deprecated Use EXCHANGE_BUFFER_SIZE instead */
+export const RAG_RECENT_EXCHANGES_BUFFER = EXCHANGE_BUFFER_SIZE;
+
+// Haiku gate (filters trivial exchanges before RAG + context agent pipeline)
+export const MODEL_GATE = process.env.MODEL_GATE || 'claude-haiku-4-5-20251001';
+export const GATE_ENABLED = process.env.GATE_ENABLED !== 'false'; // true by default
+export const GATE_CONTEXT_EXCHANGES = parseInt(process.env.GATE_CONTEXT_EXCHANGES || '5', 10);
+
+// Pre-search (fast programmatic search before main agent responds)
+export const PRE_SEARCH_ENABLED = process.env.PRE_SEARCH_ENABLED !== 'false'; // true by default
+export const PRE_SEARCH_LIMIT = parseInt(process.env.PRE_SEARCH_LIMIT || '5', 10);
