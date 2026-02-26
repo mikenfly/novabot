@@ -42,8 +42,9 @@ export interface MemoryRelation {
 export interface ExchangeMessage {
   channel: string; // "pwa", "whatsapp-main", "whatsapp-famille"
   conversation_name: string;
-  conversationId?: string; // PWA conversation UUID (for critical injection targeting)
+  conversationId?: string; // PWA conversation UUID (for urgent context targeting)
   user_message: string;
   assistant_response: string;
   timestamp: string;
+  memory_summary?: string; // Summary from context agent Phase 4 (what was done)
 }

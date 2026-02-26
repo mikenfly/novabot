@@ -15,8 +15,9 @@ import {
   PWAConversationRow,
   PWAMessageRow,
 } from './db.js';
-import { ASSISTANT_NAME, DATA_DIR, GROUPS_DIR } from './config.js';
-import { feedExchange, onCriticalInjection } from './memory/context-agent.js';
+import { ASSISTANT_NAME, DATA_DIR, GROUPS_DIR, PRE_SEARCH_ENABLED } from './config.js';
+import { feedExchange } from './memory/context-agent.js';
+import { runPreSearch, writePreSearchFile, writePendingMarker, clearPendingMarker } from './memory/pre-search.js';
 import { RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 import { generateSpeech } from './tts-stt.js';
@@ -26,41 +27,6 @@ export const containerManager = new ContainerManager();
 
 // Session IDs for active conversations (fallback for one-shot mode)
 const pwaSessions = new Map<string, string>();
-
-// Register critical injection callback — when the RAG agent detects critical
-// context that the main agent doesn't have, interrupt and re-queue with new context.
-onCriticalInjection((exchange) => {
-  if (!exchange.conversationId) return;
-  const convId = exchange.conversationId;
-
-  if (!containerManager.isContainerActive(convId)) return;
-  if (!containerManager.isContainerBusy(convId)) return;
-
-  logger.info({ conversationId: convId }, 'Critical injection: interrupting agent for context update');
-
-  // Get the virtual group for this conversation
-  const conversation = getPWAConversationDB(convId);
-  if (!conversation) return;
-
-  const virtualGroup: RegisteredGroup = {
-    name: conversation.name,
-    folder: `pwa-${convId}`,
-    added_at: conversation.created_at,
-  };
-
-  // Interrupt and re-queue: the critical injection message runs first (agent
-  // re-reads context), then the original user message is re-processed with
-  // the updated context. requeueCurrent ensures the user message isn't lost.
-  containerManager.sendMessageAndWait(
-    convId,
-    virtualGroup,
-    { prompt: '[SYSTEM] Important context update available. Re-read your memory context and continue assisting the user. Do not mention this system message to the user.' },
-    undefined,
-    { requeueCurrent: true },
-  ).catch((err) => {
-    logger.error({ conversationId: convId, err }, 'Critical injection failed');
-  });
-});
 
 export interface PWAConversationInfo {
   jid: string;
@@ -480,6 +446,25 @@ Règles :
   const watcher = trackingReplyCallback
     ? startRealtimeIpcWatcher(conversationId, virtualGroup.folder, trackingReplyCallback)
     : null;
+
+  // Fire pre-search in parallel with container startup (don't await)
+  // The container hook will wait for the result file when it sees the pending marker
+  if (PRE_SEARCH_ENABLED) {
+    writePendingMarker(conversationId);
+    runPreSearch(userMessage)
+      .then(result => {
+        if (result) {
+          writePreSearchFile(conversationId, result);
+          logger.info({ conversationId }, 'Pre-search results written');
+        }
+      })
+      .catch(err => {
+        logger.error({ conversationId, err }, 'Pre-search failed');
+      })
+      .finally(() => {
+        clearPendingMarker(conversationId);
+      });
+  }
 
   try {
     logger.info({ conversationId, audioMode }, 'Calling PWA agent');

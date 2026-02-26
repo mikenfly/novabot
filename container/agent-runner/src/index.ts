@@ -367,12 +367,65 @@ function loadUrgentContext(): string | null {
   return null;
 }
 
+/**
+ * Wait for pre-search results. The backend writes a .pending marker when it starts
+ * pre-search, then writes the .md result file and removes the marker when done.
+ * If no pending marker exists, just check for an existing result file.
+ * If pending, poll until the result file appears or timeout.
+ */
+function waitForPreSearch(timeoutMs = 5000): string | null {
+  if (!currentChatJid) return null;
+
+  const pendingPath = `/workspace/global/pre-search-${currentChatJid}.pending`;
+  const resultPath = `/workspace/global/pre-search-${currentChatJid}.md`;
+
+  // No pending marker — either pre-search already finished or wasn't started
+  if (!fs.existsSync(pendingPath)) {
+    try {
+      if (fs.existsSync(resultPath)) {
+        return fs.readFileSync(resultPath, 'utf-8').trim() || null;
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
+  // Pending marker exists — poll for the result file
+  log(`Pre-search pending, waiting up to ${timeoutMs}ms...`);
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    // Check if result file appeared
+    try {
+      if (fs.existsSync(resultPath)) {
+        log(`Pre-search result ready after ${Date.now() - start}ms`);
+        return fs.readFileSync(resultPath, 'utf-8').trim() || null;
+      }
+    } catch { /* ignore */ }
+
+    // Check if pending marker was removed (pre-search finished with no results)
+    if (!fs.existsSync(pendingPath)) {
+      log(`Pre-search completed with no results after ${Date.now() - start}ms`);
+      return null;
+    }
+
+    // Busy-wait with small sleep (10ms)
+    const waitEnd = Date.now() + 10;
+    while (Date.now() < waitEnd) { /* spin */ }
+  }
+
+  log(`Pre-search timed out after ${timeoutMs}ms`);
+  return null;
+}
+
 function loadFullContext(): string | null {
   const parts: string[] = [];
 
   // Urgent context first (if present)
   const urgent = loadUrgentContext();
   if (urgent) parts.push(urgent);
+
+  // Pre-search results (waits for backend if pending, otherwise reads existing file)
+  const preSearch = waitForPreSearch();
+  if (preSearch) parts.push(preSearch);
 
   // Regular memory context
   const context = loadMemoryContext();

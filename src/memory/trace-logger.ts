@@ -35,7 +35,6 @@ interface TraceRag {
 interface TraceInjection {
   urgentContextWritten: boolean;
   urgentContextFile: string | null;
-  criticalInjectionTriggered: boolean;
 }
 
 interface TraceContextAgent {
@@ -100,7 +99,6 @@ export function startTrace(
     injection: {
       urgentContextWritten: false,
       urgentContextFile: null,
-      criticalInjectionTriggered: false,
     },
     contextAgent: null,
   };
@@ -157,7 +155,6 @@ export function traceInjection(
   data: {
     urgentContextWritten: boolean;
     urgentContextFile?: string;
-    criticalInjectionTriggered: boolean;
   },
 ): void {
   const trace = pendingTraces.get(exchangeId);
@@ -166,7 +163,6 @@ export function traceInjection(
   trace.injection = {
     urgentContextWritten: data.urgentContextWritten,
     urgentContextFile: data.urgentContextFile || null,
-    criticalInjectionTriggered: data.criticalInjectionTriggered,
   };
 }
 

@@ -1,9 +1,13 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 import fs from 'fs';
 import path from 'path';
 
-import { MEMORY_DIR, GROUPS_DIR, MODEL_CONTEXT, RAG_ENABLED, RAG_RECENT_EXCHANGES_BUFFER, RAG_RECENT_EXCHANGES_PER_CONV } from '../config.js';
+import { MEMORY_DIR, GROUPS_DIR, MODEL_CONTEXT, RAG_ENABLED, EXCHANGE_BUFFER_SIZE, RAG_RECENT_EXCHANGES_PER_CONV, GATE_ENABLED } from '../config.js';
+import { gateExchange } from './gate.js';
 import {
   initMemoryDatabase,
   checkpointWal,
@@ -24,11 +28,16 @@ import {
 } from './trace-logger.js';
 import { generateMemoryContext } from './generate-context.js';
 import { runRagAgent, type RagResult } from './rag-agent.js';
-import { CONTEXT_AGENT_SYSTEM_PROMPT } from './system-prompt.js';
+import {
+  CONTEXT_AGENT_BASE_PROMPT,
+  PHASE_1_AUDIT,
+  PHASE_2_ACTIONS,
+  PHASE_3_BUMPS,
+  PHASE_4_SUMMARY,
+} from './system-prompt.js';
 import { createMemoryMcpServer } from './tools.js';
 import type { ExchangeMessage } from './types.js';
 
-const SESSION_FILE = path.join(MEMORY_DIR, '.session');
 const LOG_FILE = path.join(MEMORY_DIR, 'agent.log');
 const URGENT_CONTEXT_DIR = path.join(GROUPS_DIR, 'global');
 const URGENT_CONTEXT_TTL = 60000; // 60s
@@ -40,10 +49,8 @@ function urgentContextPath(conversationId?: string): string {
 }
 const MODEL = MODEL_CONTEXT;
 
-let sessionId: string | null = null;
 let processing = false;
 let lastCompletedAt: string | null = null;
-let memoryMcpServer: ReturnType<typeof createMemoryMcpServer> | null = null;
 let urgentContextCleanupTimer: ReturnType<typeof setInterval> | null = null;
 
 // ==================== RAG pipeline state ====================
@@ -68,13 +75,31 @@ const completedRagResults: CompletedRag[] = [];
 const contextAgentQueue: RagResult[] = [];
 const recentExchanges: ExchangeMessage[] = [];
 
-// ==================== Critical injection callback ====================
+// Concurrency limiter for RAG agents — too many concurrent query() calls freeze the event loop
+const MAX_CONCURRENT_RAG = 2;
+let activeRagCount = 0;
+const ragWaitQueue: (() => void)[] = [];
 
-type CriticalInjectionCallback = (exchange: ExchangeMessage) => void;
-let criticalInjectionCallback: CriticalInjectionCallback | null = null;
+async function acquireRagSlot(): Promise<void> {
+  if (activeRagCount < MAX_CONCURRENT_RAG) {
+    activeRagCount++;
+    return;
+  }
+  // Wait for a slot to free up
+  return new Promise(resolve => {
+    ragWaitQueue.push(() => {
+      activeRagCount++;
+      resolve();
+    });
+  });
+}
 
-export function onCriticalInjection(cb: CriticalInjectionCallback): void {
-  criticalInjectionCallback = cb;
+function releaseRagSlot(): void {
+  activeRagCount--;
+  if (ragWaitQueue.length > 0) {
+    const next = ragWaitQueue.shift()!;
+    next();
+  }
 }
 
 // ==================== Logging ====================
@@ -124,45 +149,26 @@ export function getProcessingStatus() {
   };
 }
 
-// ==================== Session management ====================
-
-function loadSessionId(): string | null {
-  try {
-    if (fs.existsSync(SESSION_FILE)) {
-      return fs.readFileSync(SESSION_FILE, 'utf-8').trim() || null;
-    }
-  } catch {
-    // ignore
-  }
-  return null;
-}
-
-function saveSessionId(id: string): void {
-  fs.writeFileSync(SESSION_FILE, id, 'utf-8');
-}
-
 // ==================== Git ====================
 
-function initGitRepo(): void {
+async function initGitRepo(): Promise<void> {
   const gitDir = path.join(MEMORY_DIR, '.git');
   if (!fs.existsSync(gitDir)) {
-    execSync('git init', { cwd: MEMORY_DIR, stdio: 'ignore' });
+    await execAsync('git init', { cwd: MEMORY_DIR });
     log('Initialized git repo in memory/');
   }
 }
 
-function gitCommitIfChanged(): void {
+async function gitCommitIfChanged(): Promise<void> {
   try {
-    const status = execSync('git status --porcelain', {
+    const { stdout } = await execAsync('git status --porcelain', {
       cwd: MEMORY_DIR,
-      encoding: 'utf-8',
-    }).trim();
+    });
 
-    if (status) {
+    if (stdout.trim()) {
       checkpointWal();
-      execSync('git add -A && git commit -m "auto: update after exchange"', {
+      await execAsync('git add -A && git commit -m "auto: update after exchange"', {
         cwd: MEMORY_DIR,
-        stdio: 'ignore',
       });
     }
   } catch {
@@ -232,6 +238,9 @@ function cleanupUrgentContext(): void {
 // ==================== RAG pipeline ====================
 
 async function runRagForExchange(pending: PendingRag): Promise<void> {
+  // Wait for a concurrency slot (max MAX_CONCURRENT_RAG parallel RAG agents)
+  await acquireRagSlot();
+
   try {
     // Filter recent exchanges to same conversation for RAG context
     const conversationExchanges = recentExchanges
@@ -247,14 +256,10 @@ async function runRagForExchange(pending: PendingRag): Promise<void> {
     const elapsed = Date.now() - pending.startedAt;
     log(`RAG[${pending.sequence}] done: priority=${ragResult.priority}, keys=${ragResult.relevantKeys.length}, ${elapsed}ms`);
 
-    // Handle injection for important/critical
+    // Write urgent context for important/critical (no interruption — agent picks it up on next message)
     const isInjected = ragResult.priority === 'important' || ragResult.priority === 'critical';
-    const isCritical = ragResult.priority === 'critical' && !!criticalInjectionCallback;
     if (isInjected) {
       writeUrgentContext(ragResult);
-    }
-    if (isCritical) {
-      criticalInjectionCallback!(ragResult.exchange);
     }
 
     // Trace: injection details
@@ -263,7 +268,6 @@ async function runRagForExchange(pending: PendingRag): Promise<void> {
       urgentContextFile: isInjected
         ? path.basename(urgentContextPath(ragResult.exchange.conversationId))
         : undefined,
-      criticalInjectionTriggered: isCritical,
     });
 
     // Store completed result
@@ -285,6 +289,7 @@ async function runRagForExchange(pending: PendingRag): Promise<void> {
       },
     });
   } finally {
+    releaseRagSlot();
     // Remove from pending
     const idx = pendingRagQueue.findIndex(p => p.exchangeId === pending.exchangeId);
     if (idx !== -1) pendingRagQueue.splice(idx, 1);
@@ -351,7 +356,208 @@ function formatExchanges(exchanges: ExchangeMessage[]): string {
   return `<exchanges>\n${items}\n</exchanges>`;
 }
 
-// ==================== Context agent processing ====================
+// ==================== Buffer formatting for multi-phase context agent ====================
+
+/**
+ * Format the rolling buffer for the context agent's prompt.
+ * Groups exchanges by conversation, ordered from least-recently-active
+ * to most-recently-active (for prompt cache optimization: stable prefix).
+ * Includes memory_summary when available (from previous Phase 4).
+ */
+function formatBufferForContextAgent(exchanges: ExchangeMessage[]): string {
+  if (exchanges.length === 0) return '';
+
+  // Group by conversation (channel + name for uniqueness)
+  const convMap = new Map<string, { channel: string; name: string; exchanges: ExchangeMessage[]; lastTime: string }>();
+
+  for (const e of exchanges) {
+    const convKey = `${e.channel}|${e.conversation_name}`;
+    let conv = convMap.get(convKey);
+    if (!conv) {
+      conv = { channel: e.channel, name: e.conversation_name, exchanges: [], lastTime: e.timestamp };
+      convMap.set(convKey, conv);
+    }
+    conv.exchanges.push(e);
+    if (e.timestamp > conv.lastTime) conv.lastTime = e.timestamp;
+  }
+
+  // Sort conversations: least recently active first (stable prefix for cache)
+  const sorted = [...convMap.values()].sort((a, b) => a.lastTime.localeCompare(b.lastTime));
+
+  const sections = sorted.map(conv => {
+    const header = `## [${conv.channel}] ${conv.name}`;
+    const items = conv.exchanges.map(e => {
+      const summary = e.memory_summary
+        ? `\n<memory_summary>${e.memory_summary}</memory_summary>`
+        : '';
+      return `<exchange time="${e.timestamp}">
+<user>${e.user_message}</user>
+<assistant>${e.assistant_response}</assistant>${summary}
+</exchange>`;
+    });
+    return `${header}\n\n${items.join('\n\n')}`;
+  });
+
+  return sections.join('\n\n');
+}
+
+// ==================== Multi-phase context agent ====================
+
+interface PhaseResult {
+  sessionId: string;
+  resultText: string;
+  toolCallCount: number;
+  costUsd: number | null;
+  turns: number;
+  durationMs: number;
+}
+
+/**
+ * Run a single phase of the context agent pipeline.
+ * Phase 1 creates a fresh session; Phases 2-4 resume from the previous phase.
+ */
+async function runPhase(
+  phaseName: string,
+  userPrompt: string,
+  systemPrompt: string,
+  mcpServer: ReturnType<typeof createMemoryMcpServer> | null,
+  resumeSessionId: string | null,
+  batchExchangeIds: string[],
+): Promise<PhaseResult> {
+  const phaseStart = Date.now();
+  let phaseSessionId = resumeSessionId || '';
+  let resultText = '';
+  let toolCallCount = 0;
+  let costUsd: number | null = null;
+  let turns = 0;
+
+  log(`  [${phaseName}] starting...`);
+
+  const mcpServers = mcpServer ? { memory: mcpServer } : undefined;
+
+  let lastMsgAt = Date.now();
+  for await (const message of query({
+    prompt: userPrompt,
+    options: {
+      model: MODEL,
+      cwd: MEMORY_DIR,
+      ...(resumeSessionId ? { resume: resumeSessionId } : {}),
+      tools: [],
+      permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
+      settingSources: [],
+      systemPrompt,
+      ...(mcpServers ? { mcpServers } : {}),
+    },
+  })) {
+    const gap = Date.now() - lastMsgAt;
+    log(`  [${phaseName}] msg type=${message.type} (gap=${gap}ms)`);
+    lastMsgAt = Date.now();
+
+    // Capture session_id
+    if ('session_id' in message && message.session_id) {
+      phaseSessionId = message.session_id;
+    }
+
+    // Log tool calls
+    if (message.type === 'assistant' && 'message' in message) {
+      const content = (message as any).message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block.type === 'tool_use') {
+            toolCallCount++;
+            const toolName = block.name.replace('mcp__memory__', '');
+            const input = block.input as Record<string, any>;
+            const summary = summarizeToolInput(block.name, input);
+            log(`    → ${toolName}(${summary})`);
+
+            for (const eid of batchExchangeIds) {
+              traceContextToolCall(eid, toolName, input);
+            }
+          }
+        }
+      }
+    }
+
+    // Capture result
+    if (message.type === 'result') {
+      const result = message as any;
+      if (result.subtype === 'success') {
+        resultText = result.result || '';
+        costUsd = result.total_cost_usd ?? null;
+        turns = result.num_turns ?? 0;
+      } else {
+        log(`    ✗ ${phaseName} error (${result.subtype}): ${JSON.stringify(result.errors)}`);
+      }
+    }
+  }
+
+  const durationMs = Date.now() - phaseStart;
+  log(`  [${phaseName}] done: ${toolCallCount} tool calls, ${turns} turns, $${costUsd?.toFixed(3) || '?'}, ${durationMs}ms`);
+
+  return { sessionId: phaseSessionId, resultText, toolCallCount, costUsd, turns, durationMs };
+}
+
+/**
+ * Run the full 4-phase context agent pipeline for a batch of exchanges.
+ * Each cycle uses a FRESH session (no resume from previous exchanges).
+ * Phases within a cycle resume from the previous phase.
+ */
+interface MultiPhaseResult {
+  summaryText: string | null;
+  totalCost: number;
+  totalTools: number;
+  totalTurns: number;
+  totalDuration: number;
+}
+
+async function runMultiPhaseContextAgent(
+  batch: RagResult[],
+  batchExchangeIds: string[],
+): Promise<MultiPhaseResult> {
+  // Build recent exchanges block (grouped by conversation, ordered least-active-first)
+  const recentBlock = formatBufferForContextAgent(recentExchanges);
+
+  // Build current exchange block with RAG pre-context
+  const hasRagContext = batch.some(r => r.preContext);
+  const exchangeBlock = hasRagContext
+    ? formatExchangesWithRag(batch)
+    : formatExchanges(batch.map(r => r.exchange));
+
+  // Phase 1 — Audit (read-only, fresh session)
+  const phase1Prompt = `${PHASE_1_AUDIT}\n\n---\n\n# Échanges récents\n\n${recentBlock}\n\n---\n\n# Nouvel échange à traiter\n\n${exchangeBlock}`;
+  const readOnlyMcp = createMemoryMcpServer({ readOnly: true });
+  const phase1 = await runPhase('audit', phase1Prompt, CONTEXT_AGENT_BASE_PROMPT, readOnlyMcp, null, batchExchangeIds);
+
+  // Phase 2 — Actions (all tools, resume from Phase 1)
+  const fullMcp = createMemoryMcpServer();
+  const phase2 = await runPhase('actions', PHASE_2_ACTIONS, CONTEXT_AGENT_BASE_PROMPT, fullMcp, phase1.sessionId, batchExchangeIds);
+
+  // Phase 3 — Bumps (bump + read, resume from Phase 2)
+  const bumpMcp = createMemoryMcpServer({ bumpOnly: true });
+  const phase3 = await runPhase('bumps', PHASE_3_BUMPS, CONTEXT_AGENT_BASE_PROMPT, bumpMcp, phase2.sessionId, batchExchangeIds);
+
+  // Phase 4 — Summary (no tools, resume from Phase 3)
+  const phase4 = await runPhase('summary', PHASE_4_SUMMARY, CONTEXT_AGENT_BASE_PROMPT, null, phase3.sessionId, batchExchangeIds);
+
+  const totalCost = [phase1, phase2, phase3, phase4]
+    .reduce((sum, p) => sum + (p.costUsd || 0), 0);
+  const totalTools = phase1.toolCallCount + phase2.toolCallCount + phase3.toolCallCount;
+  const totalTurns = phase1.turns + phase2.turns + phase3.turns + phase4.turns;
+  const totalDuration = phase1.durationMs + phase2.durationMs + phase3.durationMs + phase4.durationMs;
+
+  log(`  Multi-phase complete: ${totalTools} total tool calls, $${totalCost.toFixed(3)}, ${totalDuration}ms`);
+
+  return {
+    summaryText: phase4.resultText || null,
+    totalCost,
+    totalTools,
+    totalTurns,
+    totalDuration,
+  };
+}
+
+// ==================== Context agent queue processing ====================
 
 async function processContextAgentQueue(): Promise<void> {
   if (processing || contextAgentQueue.length === 0) return;
@@ -363,13 +569,8 @@ async function processContextAgentQueue(): Promise<void> {
     // Drain all pending results into a batch
     const batch = contextAgentQueue.splice(0, contextAgentQueue.length);
 
-    const hasRagContext = batch.some(r => r.preContext);
-    const prompt = hasRagContext
-      ? formatExchangesWithRag(batch)
-      : formatExchanges(batch.map(r => r.exchange));
-
     const channels = [...new Set(batch.map(r => r.exchange.channel))].join(', ');
-    const ragInfo = hasRagContext ? ' (with RAG pre-context)' : '';
+    const ragInfo = batch.some(r => r.preContext) ? ' (with RAG pre-context)' : '';
     log(`Processing ${batch.length} exchange(s) from ${channels}${ragInfo}`);
 
     // Trace: mark context agent start for all exchanges in batch
@@ -377,88 +578,40 @@ async function processContextAgentQueue(): Promise<void> {
     for (const eid of batchExchangeIds) traceContextStart(eid);
     const contextStartTime = Date.now();
 
-    const isFirstQuery = sessionId === null;
-    const fullPrompt = isFirstQuery
-      ? `${CONTEXT_AGENT_SYSTEM_PROMPT}\n\n---\n\nVoici le premier lot d'échanges à traiter :\n\n${prompt}`
-      : prompt;
+    // Run the multi-phase pipeline
+    const phaseResult = await runMultiPhaseContextAgent(batch, batchExchangeIds);
 
-    const q = query({
-      prompt: fullPrompt,
-      options: {
-        model: MODEL,
-        cwd: MEMORY_DIR,
-        ...(sessionId ? { resume: sessionId } : {}),
-        tools: [],
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
-        settingSources: [],
-        mcpServers: {
-          memory: memoryMcpServer!,
-        },
-        systemPrompt: isFirstQuery ? undefined : CONTEXT_AGENT_SYSTEM_PROMPT,
-      },
-    });
-
-    let toolCallCount = 0;
-    let contextCostUsd: number | null = null;
-    let contextTurns = 0;
-
-    for await (const message of q) {
-      // Capture session_id from any message
-      if ('session_id' in message && message.session_id) {
-        if (message.session_id !== sessionId) {
-          sessionId = message.session_id;
-          saveSessionId(sessionId);
-        }
-      }
-
-      // Log + trace tool calls from assistant messages
-      if (message.type === 'assistant' && 'message' in message) {
-        const content = (message as any).message?.content;
-        if (Array.isArray(content)) {
-          for (const block of content) {
-            if (block.type === 'tool_use') {
-              toolCallCount++;
-              const toolName = block.name.replace('mcp__memory__', '');
-              const input = block.input as Record<string, any>;
-              const summary = summarizeToolInput(block.name, input);
-              log(`  → ${toolName}(${summary})`);
-
-              // Trace: record context agent tool calls for all exchanges in batch
-              for (const eid of batchExchangeIds) {
-                traceContextToolCall(eid, toolName, input);
-              }
-            }
-          }
-        }
-      }
-
-      // Log result
-      if (message.type === 'result') {
-        const result = message as any;
-        if (result.subtype === 'success') {
-          log(`  ✓ Done: ${toolCallCount} tool calls, ${result.num_turns} turns, $${result.total_cost_usd?.toFixed(3) || '?'}`);
-          contextCostUsd = result.total_cost_usd ?? null;
-          contextTurns = result.num_turns ?? 0;
-        } else {
-          log(`  ✗ Error (${result.subtype}): ${JSON.stringify(result.errors)}`);
+    // Store summary on the exchanges in the rolling buffer
+    if (phaseResult.summaryText) {
+      for (const ragResult of batch) {
+        const idx = recentExchanges.findIndex(
+          e => e.timestamp === ragResult.exchange.timestamp
+            && e.conversation_name === ragResult.exchange.conversation_name
+            && e.user_message === ragResult.exchange.user_message
+        );
+        if (idx !== -1) {
+          recentExchanges[idx].memory_summary = phaseResult.summaryText;
         }
       }
     }
 
     // After processing: generate context file, refresh dirty embeddings, git commit
+    log('  Post-processing: generating memory context...');
     await generateMemoryContext();
+    log('  Post-processing: refreshing dirty embeddings...');
     const refreshed = await refreshDirtyEmbeddings();
     if (refreshed > 0) log(`  Refreshed ${refreshed} dirty embeddings`);
-    gitCommitIfChanged();
+    log('  Post-processing: git commit...');
+    await gitCommitIfChanged();
+    log('  Post-processing: done');
 
     // Trace: finalize context agent for all exchanges in batch
     const contextDuration = Date.now() - contextStartTime;
     for (const eid of batchExchangeIds) {
       traceContextResult(eid, {
         durationMs: contextDuration,
-        costUsd: contextCostUsd,
-        turns: contextTurns,
+        costUsd: phaseResult.totalCost || null,
+        turns: phaseResult.totalTurns,
         embeddingsRefreshed: refreshed,
       });
     }
@@ -490,6 +643,7 @@ async function refreshDirtyEmbeddings(): Promise<number> {
   const dirtyKeys = getDirtyEmbeddingKeys();
   if (dirtyKeys.length === 0) return 0;
 
+  log(`  refreshDirtyEmbeddings: ${dirtyKeys.length} dirty keys: [${dirtyKeys.join(', ')}]`);
   let refreshed = 0;
   for (const key of dirtyKeys) {
     try {
@@ -500,7 +654,7 @@ async function refreshDirtyEmbeddings(): Promise<number> {
 
       // Skip if embedding text hasn't actually changed
       if (entry.embedding_text === newText) {
-        // Clear dirty flag without re-embedding
+        log(`  refreshDirtyEmbeddings: ${key} — text unchanged, skip`);
         updateEmbedding(
           key,
           entry.embedding as Buffer,
@@ -509,8 +663,10 @@ async function refreshDirtyEmbeddings(): Promise<number> {
         continue;
       }
 
+      log(`  refreshDirtyEmbeddings: ${key} — generating embedding (${newText.length} chars)...`);
       const embeddingArray = await generateEmbedding(newText);
       updateEmbedding(key, embeddingToBuffer(embeddingArray), newText);
+      log(`  refreshDirtyEmbeddings: ${key} — done`);
       refreshed++;
     } catch (err) {
       log(`  ⚠ Failed to refresh embedding for ${key}: ${err instanceof Error ? err.message : String(err)}`);
@@ -525,10 +681,31 @@ async function refreshDirtyEmbeddings(): Promise<number> {
 export function feedExchange(exchange: ExchangeMessage): void {
   // Add to recent exchanges circular buffer (global, all conversations)
   recentExchanges.push(exchange);
-  if (recentExchanges.length > RAG_RECENT_EXCHANGES_BUFFER) {
+  if (recentExchanges.length > EXCHANGE_BUFFER_SIZE) {
     recentExchanges.shift();
   }
 
+  // Gate: decide if this exchange should be processed by the pipeline
+  if (GATE_ENABLED) {
+    const conversationExchanges = recentExchanges
+      .filter(e => e.conversation_name === exchange.conversation_name);
+
+    gateExchange(exchange, conversationExchanges).then(shouldProcess => {
+      if (shouldProcess) {
+        launchPipeline(exchange);
+      } else {
+        log(`Gate: skipped [${exchange.conversation_name}] "${exchange.user_message.slice(0, 50)}..."`);
+      }
+    }).catch(err => {
+      log(`Gate error (processing anyway): ${err instanceof Error ? err.message : String(err)}`);
+      launchPipeline(exchange);
+    });
+  } else {
+    launchPipeline(exchange);
+  }
+}
+
+function launchPipeline(exchange: ExchangeMessage): void {
   if (!RAG_ENABLED) {
     // Bypass RAG — feed directly to context agent
     const bypassId = `exch-${exchangeCounter++}-${Date.now()}`;
@@ -563,7 +740,7 @@ export function feedExchange(exchange: ExchangeMessage): void {
 
   pendingRagQueue.push(pending);
 
-  // Fire RAG agent in parallel (don't await)
+  // Fire RAG agent (don't await — runs before context agent via drainToContextAgent)
   runRagForExchange(pending);
 }
 
@@ -577,29 +754,31 @@ export async function initContextAgent(): Promise<void> {
   initMemoryDatabase();
 
   // Initialize git repo
-  initGitRepo();
-
-  // Create MCP server
-  memoryMcpServer = createMemoryMcpServer();
-
-  // Load previous session
-  sessionId = loadSessionId();
-  if (sessionId) {
-    log(`Resuming session ${sessionId.slice(0, 8)}...`);
-  }
+  await initGitRepo();
 
   // Start urgent context cleanup timer
   urgentContextCleanupTimer = setInterval(cleanupUrgentContext, 30000);
 
-  log(`Context agent ready (RAG: ${RAG_ENABLED ? 'enabled' : 'disabled'})`);
+  // Heartbeat — proves event loop is alive (logs every 5s to agent.log)
+  setInterval(() => {
+    const mem = process.memoryUsage();
+    const heapMB = (mem.heapUsed / 1024 / 1024).toFixed(1);
+    const rssMB = (mem.rss / 1024 / 1024).toFixed(1);
+    log(`[heartbeat] heap=${heapMB}MB rss=${rssMB}MB activeRag=${activeRagCount} processing=${processing} queue=${contextAgentQueue.length}`);
+  }, 5000);
+
+  log(`Context agent ready (multi-phase, RAG: ${RAG_ENABLED ? 'enabled' : 'disabled'}, gate: ${GATE_ENABLED ? 'enabled' : 'disabled'})`);
 }
 
 export async function resetContextAgent(): Promise<void> {
   if (processing) {
-    log('Warning: reset while processing — waiting...');
+    log('Warning: reset while processing — waiting up to 60s...');
     const start = Date.now();
-    while (processing && Date.now() - start < 30000) {
+    while (processing && Date.now() - start < 60000) {
       await new Promise((r) => setTimeout(r, 500));
+    }
+    if (processing) {
+      log('Warning: reset timeout — forcing reset while still processing');
     }
   }
 
@@ -615,9 +794,9 @@ export async function resetContextAgent(): Promise<void> {
     if (fs.existsSync(f)) fs.unlinkSync(f);
   }
 
-  // Delete session file
-  if (fs.existsSync(SESSION_FILE)) fs.unlinkSync(SESSION_FILE);
-  sessionId = null;
+  // Delete legacy session file if it exists
+  const legacySessionFile = path.join(MEMORY_DIR, '.session');
+  if (fs.existsSync(legacySessionFile)) fs.unlinkSync(legacySessionFile);
 
   // Delete context files
   const contextFile = path.join(GROUPS_DIR, 'global', 'memory-context.md');
@@ -645,9 +824,6 @@ export async function resetContextAgent(): Promise<void> {
 
   // Reinit DB
   initMemoryDatabase();
-
-  // Recreate MCP server
-  memoryMcpServer = createMemoryMcpServer();
 
   log('Context agent reset complete — clean state');
 }
